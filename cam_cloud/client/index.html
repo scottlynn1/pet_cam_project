@@ -1,0 +1,46 @@
+<div id="control" style="width: 500px; height: 500px"></div>
+
+<script>
+const control = document.getElementById("control");
+
+control.addEventListener("touchstart", e => {
+  e.preventDefault();
+  console.log(e.touches[0].clientX);
+  console.log(e.touches[0].clientY);
+})
+control.addEventListener("touchmove", e => {
+  e.preventDefault();
+  [...e.touches].forEach(touch => {
+    console.log(touch.clientX)
+    console.log(touch.clientY)
+  })
+})
+control.addEventListener("touchend", (e) => {
+  e.preventDefault();
+  console.log(e.touches[0].clientX);
+  console.log(e.touches[0].clientY);
+})
+
+
+
+// function send(e) {
+
+//   if (!e) {
+//     ws.send(JSON.stringify({ laser: 0 }));
+//     return;
+//   }
+//     e.preventDefault();
+
+
+//   const rect = control.getBoundingClientRect();
+//   const x = (e.clientX - rect.left) / rect.width;
+//   const y = (e.clientY - rect.top) / rect.height;
+//   console.log("x" + x + "y" + y)
+//   ws.send(JSON.stringify({
+//     x: x,
+//     y: y,
+//     laser: 1
+//   }));
+
+// }
+</script>
