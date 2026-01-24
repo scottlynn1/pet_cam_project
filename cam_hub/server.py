@@ -1,5 +1,6 @@
 import asyncio
 import websockets
+import json
 
 PORT = 5000
 url = 'ws://localhost:3000'
@@ -21,6 +22,11 @@ async def connect_to_node(uri):
     while True:
         try:
             async with websockets.connect(uri) as ws:
+                await ws.send(json.dumps({
+                  "type": "init",
+                  "role": "python",
+                  "server_id": "py-01"
+                }))
                 print(f"Connected to {uri}")
                 async for msg in ws:
                     print(f"From {uri}: {msg}")
