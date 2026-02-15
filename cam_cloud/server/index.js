@@ -1,5 +1,14 @@
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 3000 });
+import express from "express"
+const app = express();
+import dotenv from 'dotenv';
+const env = process.env.NODE_ENV || 'development';
+dotenv.config({
+  path: `.env.${env}`,
+});
+const PORT = parseInt(process.env.PORT);
+import { WebSocketServer } from 'ws';
+const server = app.listen(PORT, () => console.log(`Cloud relay running on port:${PORT}`));
+const wss = new WebSocketServer({ httpServer: server });
 
 let pyserver = null
 
@@ -39,16 +48,40 @@ wss.on('connection', (ws) => {
     }
   })
 })
-// const io = require('socket.io')(3000, {
-//   cors : {
-//     origins : ['http://localhost:5173']
-//   }
-// })
-// io.on('connection', socket => {
-//   console.log(socket)
-//   socket.on('custom-event', (data) => {
-//     console.log(data)
-//   })
-// })
+
+app.get("/camera/:streamId", (req, res) => {
+  const streamId = req.params.streamId;
+
+  if (!pyserver || pyserver.readyState !== WebSocket.OPEN) {
+    return res.status(503).send("Stream not available");
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "multipart/x-mixed-replace; boundary=frame",
+    "Cache-Control": "no-cache",
+    "Connection": "close",
+  });
+
+  console.log(`Browser connected to stream: ${streamId}`);
+
+  // Forward MJPEG bytes from Pi to browser
+  const forwarder = (data) => {
+    if (res.writableEnded) return;
+    res.write(data); // write raw bytes directly
+  };
+
+  // Listen for binary frames
+  pyserver.on("message", forwarder);
+
+  // When browser disconnects
+  req.on("close", () => {
+    pyserver.off("message", forwarder);
+    console.log(`Browser disconnected from stream ${streamId}`);
+    // Optional: tell Pi to stop streaming
+    pyserver.send(JSON.stringify({ cmd: "stop_stream", streamId }));
+  });
+});
+
+
 
 console.log("Index.js started");
