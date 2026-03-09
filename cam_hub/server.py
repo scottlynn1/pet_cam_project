@@ -1,32 +1,28 @@
 import asyncio
 import websockets
 import json
-import requests
+import aiohttp
 
 PORT = 5000
-url = 'ws://project4.scottlynn.live/ws'
-camurl = "http://esp32cam.local/stream"
-devices = map()
-
-
-# async def listen(websocket):
-#   print(websocket)
-
-# async def start_server():
-#   server = await websockets.serve(listen, "localhost", PORT)
-#   print(f"WebSocket server listening on {PORT}")
-#   await server.wait_closed()
+NODE_URL = 'ws://project4.scottlynn.live/ws'
+CAM_URL = "http://esp32cam.local/stream/"
+devices = {}
+stream_task = None
 
 async def listen(websocket):
     print("ESP32 connected")
-    await websocket.send('{"type":"hello","source":"pi"}')
+    await websocket.send(json.dumps({
+        "type":"init_conn",
+        "role":"py_server"
+    }))
 
     try:
         async for msg in websocket:
-            print("Received:", msg)
-            devices.set(msg, websocket)
+              device_data = json.loads(msg)
+              print("Registering:", device_data["role"])
+              devices[device_data["streamId"]] = websocket
     except websockets.exceptions.ConnectionClosed:
-        print("ESP32 disconnected")
+        print("ESP32 disconnected: connecton failed")
 
 async def start_server():
     server = await websockets.serve(
@@ -39,87 +35,61 @@ async def start_server():
     print(f"WebSocket server listening on {PORT}")
     await server.wait_closed()
 
-headers = {
-    "X-Server-ID": "rasppi",
-    "X-Role": "hub"
-}
+async def stream_video(ws, url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            async for chunk in resp.content.iter_chunked(4096):
+                await ws.send(chunk)
 
-
-
-
+def cancel_stream():
+    global stream_task
+    if stream_task and not stream_task.done():
+        stream_task.cancel()
+    stream_task = None
 
 async def connect_to_node(uri):
+    global stream_task
+
     while True:
         try:
             async with websockets.connect(uri) as ws:
-                await ws.send(json.dumps({
-                  "type": "init",
-                  "role": "python",
-                  "server_id": "py-01"
-                }))
                 print(f"Connected to {uri}")
-                async for msg in ws:
-                    if "messege = init":
-                      r = requests.get(url, stream=True)
-                      for chunk in r.iter_content(chunk_size=4096):
-                        if not chunk:
-                          break
-                        ws.send(chunk)
-                    print(f"From {uri}: {msg}")
+                await ws.send(json.dumps({ 
+                    "type": "init_conn",
+                        "role": "py_server",
+                        "target": "node_server"
+                }))
+                async for message in ws:
+                    msg = json.loads(message)
+                    print(msg)
+                    if msg["type"] == "servo_cmd":
+                        socket = devices.get(msg["target"])
+                        if socket:
+                          await socket.send(json.dumps({
+                              "type": "servo_cmd",
+                              "data": msg["data"]
+                          }))
+                        
+                    elif msg["type"] == "init_stream":
+                      if stream_task is None or stream_task.done():
+                        stream_task = asyncio.create_task(
+                            stream_video(ws, f"{CAM_URL}{msg["target"]}"))
+        except websockets.exceptions.ConnectionClosed:
+            print("Node disconnected")
+            cancel_stream()
+
         except Exception as e:
             print(f"Connection to {uri} failed: {e}")
+            cancel_stream()
             await asyncio.sleep(5)  # reconnect delay
 
 async def main():
     await asyncio.gather(
       start_server(),
-      connect_to_node(url)
+      connect_to_node(NODE_URL)
     )
 
 if __name__ == "__main__":
     asyncio.run(main())
 
-# import asyncio
-# import websockets
 
-# # ----------------------
-# # WebSocket SERVER
-# # ----------------------
-
-# async def handle_client(websocket):
-#     async for message in websocket:
-#         print(f"Incoming client says: {message}")
-#         await websocket.send("ack")
-
-# async def start_server():
-#     server = await websockets.serve(handle_client, "0.0.0.0", 8765)
-#     print("WebSocket server listening on :8765")
-#     await server.wait_closed()
-
-# # ----------------------
-# # WebSocket CLIENT
-# # ----------------------
-
-# async def connect_to_other_server(uri):
-#     while True:
-#         try:
-#             async with websockets.connect(uri) as ws:
-#                 print(f"Connected to {uri}")
-#                 async for msg in ws:
-#                     print(f"From {uri}: {msg}")
-#         except Exception as e:
-#             print(f"Connection to {uri} failed: {e}")
-#             await asyncio.sleep(5)  # reconnect delay
-
-# # ----------------------
-# # MAIN
-# # ----------------------
-
-# async def main():
-#     await asyncio.gather(
-#         start_server(),
-#         connect_to_other_server("ws://example.com:9000"),
-#         connect_to_other_server("ws://another-server:9010"),
-#     )
-
-# asyncio.run(main())

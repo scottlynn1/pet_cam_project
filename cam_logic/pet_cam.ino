@@ -3,12 +3,12 @@
 #include <ESPAsyncWebServer.h>
 #include "esp_camera.h"
 #include <ArduinoJson.h>
-#include <Servo.h>
+#include <ESP32Servo.h>
 #include <ESPmDNS.h>
 #include "camera_pins.h"
 
-const char* ssid = "YOUR_SSID";
-const char* password = "YOUR_PASSWORD";
+const char* ssid = "CommunityFibre10Gb_225C5";
+const char* password = "x0hmt0bwxi";
 camera_config_t camera_config = {
   .pin_pwdn = PWDN_GPIO_NUM,
   .pin_reset = RESET_GPIO_NUM,
@@ -34,49 +34,50 @@ camera_config_t camera_config = {
   .jpeg_quality = 10,
   .fb_count = 1
 };
-
+void moveServos(float pan, float tilt);
+void startStream();
+void stopStream();
 
 Servo panServo;
 Servo tiltServo;
 
 WebSocketsClient ws;
-
-bool streaming = false;
-
-void streamHandler(AsyncWebServerRequest *request) {
-  WiFiClient client = request->client();
-  while (streaming) {
-    camera_fb_t * fb = esp_camera_fb_get();
-    if (!fb) continue;
-    
-    client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", fb->len);
-    client.write(fb->buf, fb->len);
-    client.print("\r\n");
-    esp_camera_fb_return(fb);
-    delay(100); // controls FPS
-  }
-}
+AsyncWebServer server(80);
+volatile bool streaming = false;
 
 void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   if (type == WStype_TEXT) {
     StaticJsonDocument<200> doc;
-    deserializeJson(doc, payload);
+    deserializeJson(doc, payload, len);
 
-    if (doc["type"] == "servo") {
+    if (doc["type"] == "servo_cmd") {
       float pan = doc["pan"];
       float tilt = doc["tilt"];
       moveServos(pan, tilt);
     }
     
-    if (doc["type"] == "video") {
-      if (doc["action"] == "start") startStream();
-      if (doc["action"] == "stop") stopStream();
+    // if (doc["type"] == "video") {
+    //   if (doc["action"] == "start") startStream();
+    //   if (doc["action"] == "stop") stopStream();
+    // }
+
+    if (doc["type"] == "init_conn") {
+      Serial.println("init_conn received from Pi");
+      StaticJsonDocument<128> reply;
+      reply["type"] = "init_conn";
+      reply["role"] = "cam_1";
+      reply["streamId"] = 1;
+
+      String out;
+      serializeJson(reply, out);
+      ws.sendTXT(out);
     }
+
   }
 }
 
 void setupWebSocket() {
-  ws.begin("pi-hub.local", 8080, "/esp32");
+  ws.begin("scottberry.local", 5000);
   ws.onEvent(onWsEvent);
   ws.setReconnectInterval(3000);
 }
@@ -87,31 +88,79 @@ void moveServos(float pan, float tilt) {
   tiltServo.write(tilt * 180);
 }
 
-AsyncWebServer server(80);
-
-
 void setupHttp() {
-  server.on("/stream", HTTP_GET, [](AsyncWebServerRequest *req) {
-    req->send_P(200, "multipart/x-mixed-replace; boundary=frame", streamHandler);
+  server.on("/stream/1", HTTP_GET, [](AsyncWebServerRequest *request) {
+
+    streaming = true;
+
+    AsyncWebServerResponse *response =
+      request->beginChunkedResponse(
+        "multipart/x-mixed-replace; boundary=frame",
+        [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+
+          static camera_fb_t *fb = nullptr;
+          static size_t sent = 0;
+          static String header;
+
+          if (!streaming) return 0;
+
+          if (!fb) {
+            fb = esp_camera_fb_get();
+            if (!fb) return 0;
+
+            header =
+              "--frame\r\n"
+              "Content-Type: image/jpeg\r\n"
+              "Content-Length: " + String(fb->len) + "\r\n\r\n";
+
+            sent = 0;
+          }
+
+          if (sent < header.length()) {
+            size_t hlen = header.length() - sent;
+            size_t toCopy = min(hlen, maxLen);
+            memcpy(buffer, header.c_str() + sent, toCopy);
+            sent += toCopy;
+            return toCopy;
+          }
+
+          size_t imgOffset = sent - header.length();
+          size_t remaining = fb->len - imgOffset;
+          size_t toCopy = min(remaining, maxLen);
+
+          memcpy(buffer, fb->buf + imgOffset, toCopy);
+          sent += toCopy;
+
+          if (sent >= header.length() + fb->len) {
+            esp_camera_fb_return(fb);
+            fb = nullptr;
+            sent = 0;
+          }
+
+          return toCopy;
+        }
+
+      );
+
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    request->send(response);
   });
 
   server.begin();
 }
 
 
-void startStream() {
-  if (!streaming) {
-    esp_camera_init(&camera_config);
-    streaming = true;
-  }
-}
+// void startStream() {
+//   if (!streaming) {
+//     streaming = true;
+//   }
+// }
 
-void stopStream() {
-  if (streaming) {
-    esp_camera_deinit();
-    streaming = false;
-  }
-}
+// void stopStream() {
+//   if (streaming) {
+//     streaming = false;
+//   }
+// }
 
 void setup() {
   Serial.begin(115200);
@@ -127,7 +176,10 @@ void setup() {
   }
   panServo.attach(12); // example GPIO
   tiltServo.attach(13);
-
+  if (esp_camera_init(&camera_config) != ESP_OK) {
+    Serial.println("Camera init failed");
+    return;
+  }
   setupWebSocket();
   setupHttp();
 }
@@ -135,20 +187,3 @@ void setup() {
 void loop() {
   ws.loop();
 }
-
-// {
-//   "type": "servo",
-//   "pan": 0.42,
-//   "tilt": 0.78
-// }
-
-// { "type": "video", "action": "start" }
-// { "type": "video", "action": "stop" }
-
-// Core 0:
-//  ├── WiFi + WebSocket
-//  └── Control handler
-
-// Core 1:
-//  ├── Camera task (MJPEG)
-//  └── HTTP server
