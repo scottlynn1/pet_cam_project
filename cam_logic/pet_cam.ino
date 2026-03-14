@@ -34,6 +34,7 @@ camera_config_t camera_config = {
   .jpeg_quality = 10,
   .fb_count = 1
 };
+
 void moveServos(float pan, float tilt);
 void startStream();
 void stopStream();
@@ -51,8 +52,8 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
     deserializeJson(doc, payload, len);
 
     if (doc["type"] == "servo_cmd") {
-      float pan = doc["pan"];
-      float tilt = doc["tilt"];
+      float pan = doc["data"]["x"];
+      float tilt = doc["data"]["y"];
       moveServos(pan, tilt);
     }
     
@@ -174,8 +175,8 @@ void setup() {
   if (!MDNS.begin("esp32cam")) {
     Serial.println("mDNS failed");
   }
-  panServo.attach(12); // example GPIO
-  tiltServo.attach(13);
+  panServo.attach(14); // example GPIO
+  tiltServo.attach(15);
   if (esp_camera_init(&camera_config) != ESP_OK) {
     Serial.println("Camera init failed");
     return;

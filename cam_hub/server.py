@@ -8,6 +8,7 @@ NODE_URL = 'ws://project4.scottlynn.live/ws'
 CAM_URL = "http://esp32cam.local/stream/"
 devices = {}
 stream_task = None
+upstream_socket = None
 
 async def listen(websocket):
     print("ESP32 connected")
@@ -16,14 +17,33 @@ async def listen(websocket):
         "role":"py_server"
     }))
 
+    streamId = None
+  
     try:
         async for msg in websocket:
-              device_data = json.loads(msg)
-              print("Registering:", device_data["role"])
-              devices[device_data["streamId"]] = websocket
+            device_data = json.loads(msg)
+            streamId = device_data["streamId"]
+            print("Registering: ", device_data["role"], " with streamId: ", streamId)
+            devices[streamId] = websocket
+            if upstream_socket:
+                await upstream_socket.send(json.dumps({
+                    "type": "data_sync",
+                    "action": "add",
+                    "data": [streamId]
+                }))
     except websockets.exceptions.ConnectionClosed:
         print("ESP32 disconnected: connecton failed")
 
+    finally:
+        if streamId and streamId in devices:
+            print("Unregistering ", device_data["role"], " with streamId: ", streamId)
+            del devices[streamId]
+            if upstream_socket:
+                await upstream_socket.send(json.dumps({
+                    "type": "data_sync",
+                    "action": "remove",
+                    "data": [streamId]
+                }))
 async def start_server():
     server = await websockets.serve(
         listen,
@@ -49,10 +69,12 @@ def cancel_stream():
 
 async def connect_to_node(uri):
     global stream_task
+    global upstream_socket
 
     while True:
         try:
             async with websockets.connect(uri) as ws:
+                upstream_socket = ws
                 print(f"Connected to {uri}")
                 await ws.send(json.dumps({ 
                     "type": "init_conn",
@@ -74,6 +96,12 @@ async def connect_to_node(uri):
                       if stream_task is None or stream_task.done():
                         stream_task = asyncio.create_task(
                             stream_video(ws, f"{CAM_URL}{msg["target"]}"))
+                    elif msg["type"] == "sync_data":
+                        await ws.send(json.dumps({
+                            "type": "sync_data",
+                            "action": "add",
+                            "data": list(devices.keys())
+                        }))
         except websockets.exceptions.ConnectionClosed:
             print("Node disconnected")
             cancel_stream()

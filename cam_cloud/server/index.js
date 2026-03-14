@@ -51,15 +51,25 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify({ type: 'error', data: 'py_server already connected' }))
         } else {
           pyserver = ws
-          pyserver.send(JSON.stringify({ type: "py_registered"}))
+          pyserver.send(JSON.stringify({ type: "sync_data"}))
           console.log("Python registered");
         }
       } else if (msg.role === "client") {
         console.log("frontend connected")
-        ws.send(JSON.stringify({ type: "data_sync", data: "registered_devices[]"})) // need to add logic for device data
+        ws.send(JSON.stringify({ type: "data_sync", data: devices})) // need to add logic for device data
       }
     }
-    
+    if (msg.type === "data_sync") {
+        if (msg.action === "add") {
+          for (let data in msg.data) {
+            devices.push(data)
+          }
+        } else if (msg.action === "remove") {
+          for (let data in msg.data) {
+            devices.pop(data)
+          }
+        }
+      }
   })
 })
 

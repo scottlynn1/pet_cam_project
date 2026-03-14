@@ -25,6 +25,7 @@ a:hover {
 body {
   margin: 0;
   display: flex;
+  flex-direction: column;
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
@@ -42,25 +43,26 @@ h1 {
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vanilla:hover {
-  filter: drop-shadow(0 0 2em #f7df1eaa);
+#control {
+  touch-action: none;
+  width: 600px;
+  height: 600px;
+  border-style: solid;
+  border-color: #747bff;
+  border-width: 3px;
 }
 
-.card {
-  padding: 2em;
+#feed {
+  width: 600px;
+  height: 600px;
+  border-style: dashed;
+  border-color: cadetblue;
+  border-width: 3px;
 }
 
-.read-the-docs {
-  color: #888;
+#container {
+  display: flex;
+  flex-direction: column;
 }
 
 button {
