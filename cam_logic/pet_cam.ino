@@ -7,8 +7,8 @@
 #include <ESPmDNS.h>
 #include "camera_pins.h"
 
-const char* ssid = "CommunityFibre10Gb_225C5";
-const char* password = "x0hmt0bwxi";
+const char* ssid = "CommunityFibre10Gb_225C5_2.4";
+const char* password = "B@obean2026";
 camera_config_t camera_config = {
   .pin_pwdn = PWDN_GPIO_NUM,
   .pin_reset = RESET_GPIO_NUM,
@@ -34,10 +34,10 @@ camera_config_t camera_config = {
   .jpeg_quality = 10,
   .fb_count = 1
 };
-
 void moveServos(float pan, float tilt);
 void startStream();
 void stopStream();
+
 
 Servo panServo;
 Servo tiltServo;
@@ -52,15 +52,23 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
     deserializeJson(doc, payload, len);
 
     if (doc["type"] == "servo_cmd") {
-      float pan = doc["data"]["x"];
-      float tilt = doc["data"]["y"];
+      float pan = doc["data"]["x"] * 90;
+      float tilt = doc["data"]["y"] * 45;
+      Serial.print("Pan: "); 
+      Serial.print(pan);
+      Serial.print(" | Tilt: "); 
+      Serial.println(tilt);
       moveServos(pan, tilt);
     }
     
-    // if (doc["type"] == "video") {
-    //   if (doc["action"] == "start") startStream();
-    //   if (doc["action"] == "stop") stopStream();
-    // }
+    if (doc["type"] == "laser_cmd") {
+      if (doc["data"] == "on") {
+        digitalWrite(13, HIGH)
+      }
+      if (doc["data"] == "off") {
+        digitalWrite(13. LOW)
+      }
+    }
 
     if (doc["type"] == "init_conn") {
       Serial.println("init_conn received from Pi");
@@ -107,7 +115,10 @@ void setupHttp() {
 
           if (!fb) {
             fb = esp_camera_fb_get();
-            if (!fb) return 0;
+            if (!fb) {
+              Serial.println("frame capture failed, stream stoped");
+              return 0;
+            }
 
             header =
               "--frame\r\n"
@@ -177,6 +188,7 @@ void setup() {
   }
   panServo.attach(14); // example GPIO
   tiltServo.attach(15);
+  pinMode(13, OUTPUT);
   if (esp_camera_init(&camera_config) != ESP_OK) {
     Serial.println("Camera init failed");
     return;
@@ -187,4 +199,7 @@ void setup() {
 
 void loop() {
   ws.loop();
+  Serial.print("RSSI: ");
+  Serial.println(WiFi.RSSI());
+  delay(2000);
 }

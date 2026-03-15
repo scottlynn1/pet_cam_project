@@ -37,9 +37,18 @@ wss.on('connection', (ws) => {
     if (msg.type === "servo_cmd") {
       console.log('Received data-point', msg.data);
       if (!pyserver) {
-        console.log('no pyserver connection to relay to')
+        console.log('no pyserver connected')
       } else {
         pyserver.send(JSON.stringify({ type: "servo_cmd", role: "node_server", data: msg.data, target: msg.target}));
+      }
+      return
+    }
+
+    if (msg.type === "laser_cmd") {
+      if (!pyserver) {
+        console.log('no pyserver connected')
+      } else {
+        pyserver.send(JSON.stringify({ type: "laser_cmd", role: "node_server", data: msg.data, target: msg.target}))
       }
       return
     }
@@ -59,16 +68,8 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: "data_sync", data: devices})) // need to add logic for device data
       }
     }
-    if (msg.type === "data_sync") {
-        if (msg.action === "add") {
-          for (let data in msg.data) {
-            devices.push(data)
-          }
-        } else if (msg.action === "remove") {
-          for (let data in msg.data) {
-            devices.pop(data)
-          }
-        }
+    if (msg.type === "sync_data") {
+        devices = msg.data
       }
   })
 })
