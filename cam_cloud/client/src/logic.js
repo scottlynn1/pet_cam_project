@@ -1,49 +1,86 @@
 const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-const url = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : `${protocol}://${window.location.hostname}:3000`
-const ws = new WebSocket (url);
+const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : `${protocol}://${window.location.hostname}:3000`
 
-ws.onopen = () => {
-  console.log("connected to server")
-  ws.send(JSON.stringify({
-    type: "init_conn",
-    role: "client",
-    target: "node_server"
-  }))
-};
-ws.onmessage = (e) => {
-  let device_data = JSON.parse(e.data) 
-  console.log(device_data.data)
-  // do something with device_data.data
-  // update UI dropdown menu of cameras to choose from
+let streamId;
+let ws;
+const container = document.getElementById("container");
+const feedstopButton = document.getElementById("feedstop");
+const laserstopButton = document.getElementById("laserstop");
+const laserButton = document.getElementById('laser-button');
+const control = document.getElementById("control");
+const feedframe = document.getElementById("feed");
+
+feedstopButton.addEventListener("click", () => {
+  feedframe.setAttribute("src", "");
+  feedstopButton.style.display = "none";
+  control.style.display = "none";
+  laserButton.style.display = "none";
+  feedframe.style.display = "none";
+  laserstopButton.style.display = "none"
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", target: streamId}));
+});
+
+laserButton.addEventListener("click", (e) => {
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", target: streamId}));
+  control.style.display = "block";
+  laserButton.style.display = "none";
+  laserstopButton.style.display = "block";
+});
+
+laserstopButton.addEventListener("click", () => {
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", target: streamId}));
+  control.style.display = "none";
+  laserstopButton.style.display = "none";
+  laserButton.style.display = "block";
+});
+
+async function getData() {
+  console.log('fetching...');
+  const url = import.meta.env.PROD ? `https://${window.location.host}/device_list` : `http://${window.location.hostname}:3000/device_list`;
+  try {
+    const response = await fetch(url, {
+      credentials: "include"
+    });
+    if (!response.ok) {
+      throw new Error(`Response status: ${response.status}`);
+    }
+    console.log(response)
+    const result = await response.json();
+    console.log(result);
+    let cameralist = document.getElementById("cam-select")
+    cameralist.addEventListener("change", attach)
+    for (let camera of result.data) {
+      let cam = document.createElement("option")
+      cam.value = cam.text = camera
+      cameralist.appendChild(cam)
+    }
+    ws = new WebSocket (URL);
+    ws.onopen = () => {
+      console.log("connected to server")
+      ws.send(JSON.stringify({
+        type: "init_conn",
+        role: "client",
+        target: "node_server"
+      }))
+    };
+  } catch (error) {
+    console.error(error.message);
+  }
+}
+
+const attach = (event) => {
+  console.log("event-triggered")
+  streamId = event.target.value;
+  feedframe.style.display = "block"
+  laserButton.style.display = "block"
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}:3000/stream?streamId=${streamId}`)
+  feedstopButton.style.display = "block"
 }
 
 
-let streamId;
-const container = document.getElementById("container");
-const control = document.getElementById("control");
-const displayButton = document.getElementById("camselect");
-const feedstopButton = document.getElementById("feedstop");
-const feedframe = document.getElementById("feed");
-
-displayButton.addEventListener("click", () => {
-  console.log("event-triggered")
-  streamId = 1;
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.host}/stream?streamId=1`)
-  displayButton.style.display = "none"
-  feedstopButton.style.display = "block"
-})
-
-feedstopButton.addEventListener("click", () => {
-  feedframe.setAttribute("src", "")
-  displayButton.style.display = "block"
-  feedstopButton.style.display = "none"
-})
+getData();
 
 
-// ws.onmessage = (event) => {
-//   const msg = JSON.parse(event.data);
-//   console.log(msg)
-// }
 
 control.addEventListener("touchstart", e => {
   e.preventDefault();

@@ -62,12 +62,18 @@ class StreamManager:
 class NodeConnection:
     def __init__(self, device_manager, stream_manager):
         self.ws = None
+        self.ws_stream = None
         self.device_manager = device_manager
         self.stream_manager = stream_manager
-
         device_manager.register_callback(self.broadcast_devices)
 
     async def connect(self, uri):
+        await asyncio.gather(
+            self._handle_commands(uri),
+            self._handle_stream(uri)
+        )
+
+    async def _handle_commands(self, uri):
         while True:
             try:
                 async with websockets.connect(uri) as ws:
@@ -80,10 +86,19 @@ class NodeConnection:
 
                     async for msg in ws:
                         await self.handle(msg)
-
             except:
                 self.ws = None
+                self.ws_stream = None
                 await asyncio.sleep(5)
+
+    async def _handle_stream(self, uri):
+        while True:
+            try:
+                async with websockets.connect(uri) as ws_stream:
+                    self.ws_stream = ws_stream
+                    while True:
+                        asyncio.sleep(3600)
+            except:
     
     async def broadcast_devices(self, devices_list):
         if self.ws:
@@ -104,7 +119,7 @@ class NodeConnection:
         elif msg["type"] == "init_stream":
             if not self.ws:
                 return
-            self.stream_manager.start("need to put device data here", self.ws, f'CAM_URL{msg["target"]}')
+            self.stream_manager.start("need to put device data here", self.ws_stream, f'CAM_URL{msg["target"]}')
 
         elif msg["type"] == "sync_data":
             await self.broadcast_devices(self.device_manager.list())

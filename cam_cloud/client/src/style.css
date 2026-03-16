@@ -44,6 +44,7 @@ h1 {
 }
 
 #control {
+  display: none;
   touch-action: none;
   width: 600px;
   height: 600px;
@@ -53,11 +54,23 @@ h1 {
 }
 
 #feed {
+  display: none;
   width: 600px;
   height: 600px;
   border-style: dashed;
   border-color: cadetblue;
   border-width: 3px;
+}
+
+#feedstop {
+  display: none;
+}
+#laserstop {
+  display: none;
+}
+
+#laser-button {
+  display: none;
 }
 
 #container {

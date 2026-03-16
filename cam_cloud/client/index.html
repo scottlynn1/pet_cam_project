@@ -8,9 +8,16 @@
   </head>
   <body>
     <div id="container">
-      <button type="button" id="camselect">Select Camera</button>
-      <button type="button" id="feedstop" style="display: none">Stop Feed</button>
+      <label for="cameras">Select Camera</label>
+      <select name="cameras" id="cam-select">
+        <option value="">--Please choose an option--</option>
+        <option value="living room">Living Room</option>
+        <option value="guest room">Guest Room</option>
+      </select>
+      <button type="button" id="feedstop">Stop Feed</button>
       <img id="feed" src=""></img>
+      <button type="button" id="laser-button">Activate Laser</button>
+      <button type="button" id="laserstop">Deactivate Laser</button>
       <div id="control"></div>
     </div>
     <div id="app"></div>
