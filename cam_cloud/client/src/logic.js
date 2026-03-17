@@ -17,18 +17,18 @@ feedstopButton.addEventListener("click", () => {
   laserButton.style.display = "none";
   feedframe.style.display = "none";
   laserstopButton.style.display = "none"
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", target: streamId}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
 });
 
 laserButton.addEventListener("click", (e) => {
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", target: streamId}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
   control.style.display = "block";
   laserButton.style.display = "none";
   laserstopButton.style.display = "block";
 });
 
 laserstopButton.addEventListener("click", () => {
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", target: streamId}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
   control.style.display = "none";
   laserstopButton.style.display = "none";
   laserButton.style.display = "block";

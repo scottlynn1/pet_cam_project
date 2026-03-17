@@ -26,57 +26,110 @@ const sessionParser = session({
 console.log(!!process.env.SECURE)
 app.use(sessionParser);
 
-app.get('/', (req, res) => {
-  // Every unique connection now has a unique req.sessionID
-  res.send(`Your unique connection ID is: ${req.sessionID}`);
-});
-
-let pyserver = null;
-let devices = [];
 
 class ClientManager {
-  constructor() {
-    this.clientIDs = [];
+  constructor(hubmanager) {
+    this.clientIDs = {};
+    this.hubmanager = hubmanager
   }
-  addClient(clientID) {
-    this.clientIDs.push(clientID);
+  //need to finish websocket with listeners
+  addClient(ws, clientID) {
+    this.clientIDs[clientID] = ws;
+    ws.on("message", (message) => {
+      const msg = JSON.parse(message);
+      if (msg.type === "servo_cmd" || msg.type == "laser_cmd") {
+        const pyserver = this.hubmanager.hubID.socket
+        pyserver.send(JSON.stringify(msg));
+      }})
   }
   removeClient(clientID) {
-    this.clientIDs.indexOf(clientID);
-    this.clientIDs.splice(clientID, 0);
+    delete this.clientIDs.clientID;
   }
 }
 
-class FeedManager {
-  constructor() {
-    this.runningFeeds = []
+class StreamManager {
+  constructor(hubmanager) {
+    this.hubmanager = hubmanager
+    this.runningstreams = {}
   }
-  
+  async add_viewer(res, clientID, hubID, deviceID) {
+    console.log(`Browser connecting to stream: ${deviceID}`);
+
+    await this.hubmanager.hubID.devices[].send(JSON.stringify({ type: 'init_stream', role: "node_server", target: deviceID}))
+    
+    // Forward MJPEG bytes from Pi to browser
+    const forwarder = (message) => {
+      if (res.writableEnded) return;
+      if (message[0] !== 0x7B) {
+        // res.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${message.length}\r\n\r\n`);
+        res.write(message);
+        // res.write('\r\n');
+      }
+    };
+    
+    // Listen for binary frames
+    pyserver.on("message", forwarder);
+  }
+
 }
+
+
   
 
 class HubManager {
-  constructor(hub) {
-    this.hub = hub
+  constructor() {
+    this.hubs = {}
+  }
+  add_socket(socket, hubID, devices) {
+    socket.on("message", (message) => {
+      const msg = JSON.parse(message);
+      if (msg.type == "sync_data") {
+        this.hubs[msg.hubID].devices = msg.devices
+      }
+
+    })
+    this.hubs[hubID] = {
+      devices: devices,
+      socket: socket
+    }
   }
 }
 
 
 wss.on('connection', (ws, req) => {
-  console.log('ws connection made')  
-  sessionParser(req, {}, () => {
-    console.log('Session ID:', req.sessionID); 
-    // Now req.sessionID and req.session will be populated!
-    
-    if (!req.sessionID) {
-        console.log("No session found for this connection.");
-    }})
+  console.log('ws connection made')
+  ws.once('message', (message) => {
+    try {
+      const msg = JSON.parse(message);
+      if (msg.type == "init_conn") {
+        if (msg.role == "py_server") {
+          HubManager.list().includes(msg.hubID) ? HubManager.add_socket(ws, msg.hubID, msg.devices) : console.log("hub already connected")
+        } else if (msg.role == "client") {
+          let clientID;
+          sessionParser(req, {}, () => {
+            console.log('Session ID:', req.sessionID);     
+            clientID = req.sessionID
+            if (!req.sessionID) {
+                console.log("No session found for this connection.");
+            }})
+          ClientManager.add_client(ws, clientID)
+        }
+      } else if (msg.type == "init_stream") {
+        StreamManager.a
+      } else {
+        console.error("first message on websocket not of type 'init_conn' or 'init_stream'")
+      }
+    } catch (err) {
+      console.error('Failed to parse first message:', err);
+    }
+  });
+
+
+
+
 
   ws.on("close", () => {
-    if (ws === pyserver) {
-      console.log("Python server disconnected");
-      pyserver = null;
-    }
+
   });
   
   ws.on('message', (message) => {
@@ -107,25 +160,6 @@ wss.on('connection', (ws, req) => {
       }
       return
     }
-
-    if (msg.type === "init_conn") {
-      if (msg.role === "py_server") {
-        if (pyserver) {
-          console.log('pyserver already connected')
-          ws.send(JSON.stringify({ type: 'error', data: 'py_server already connected' }))
-        } else {
-          pyserver = ws
-          pyserver.send(JSON.stringify({ type: "sync_data"}))
-          console.log("Python registered");
-        }
-      } else if (msg.role === "client") {
-        console.log("frontend connected")
-        // ws.send(JSON.stringify({ type: "sync_data", data: devices})) // need to add logic for device data
-      }
-    }
-    if (msg.type === "sync_data") {
-        devices = msg.data
-      }
   })
 })
 
@@ -135,12 +169,12 @@ app.get("/device_list", (req, res) => {
   } catch (error) {
     console.log(error)
     res.status(500).json({ error: "Internal Server Error" });
-
   }
 })
 
 app.get("/stream", (req, res) => {
-  const streamId = req.query.streamId;
+  const deviceID = req.query.streamId;
+  const hubID =req.query.hubID;
   let clientID
   sessionParser(req, {}, () => {
     console.log('Session ID:', req.sessionID); 
@@ -149,11 +183,10 @@ app.get("/stream", (req, res) => {
     if (!req.sessionID) {
         console.log("No session found for this connection.");
     }})
-  
-  if (!pyserver || pyserver.readyState !== WebSocket.OPEN) {
-    return res.status(503).send("Stream not available");
-  }
-
+    // if (!pyserver || pyserver.readyState !== WebSocket.OPEN) {
+      //   return res.status(503).send("Stream not available");
+      // }
+      
   res.removeHeader('ETag');
   
   res.writeHead(200, {
@@ -163,28 +196,16 @@ app.get("/stream", (req, res) => {
     "Connection": "close",
   });
   
-  console.log(`Browser connected to stream: ${streamId}`);
-  pyserver.send(JSON.stringify({ type: 'init_stream', role: "node_server", target: streamId}))
-  
-  // Forward MJPEG bytes from Pi to browser
-  const forwarder = (message) => {
-    if (res.writableEnded) return;
-    if (message[0] !== 0x7B) {
-      // res.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${message.length}\r\n\r\n`);
-      res.write(message);
-      // res.write('\r\n');
-    }
-  };
-  
-  // Listen for binary frames
-  pyserver.on("message", forwarder);
+  StreamManager.add_viewer(res, clientID, hubID, deviceID)
+
   
   // When browser disconnects
   req.on("close", () => {
+    FeedManager.remove_viewer();
     pyserver.off("message", forwarder);
-    console.log(`Browser disconnected from stream ${streamId}`);
+    console.log(`Browser disconnected from stream ${deviceID}`);
     // Optional: tell Pi to stop streaming
-    pyserver.send(JSON.stringify({ cmd: "stop_stream", streamId }));
+    pyserver.send(JSON.stringify({ cmd: "stop_stream", deviceID }));
   });
 });
 

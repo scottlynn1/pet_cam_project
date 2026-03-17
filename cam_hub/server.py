@@ -6,6 +6,7 @@ import aiohttp
 PORT = 5000
 NODE_URL = 'ws://project4.scottlynn.live/ws'
 CAM_URL = "http://esp32cam.local/stream/"
+SERVER_ID = 123
 
 class DeviceManager:
     def __init__(self):
@@ -40,29 +41,39 @@ class StreamManager:
     def __init__(self):
         self.active_streams = {}
 
-    async def start(self, device_id, ws, url):
+    async def start(self, device_id):
         if device_id in self.active_streams:
             return
+
         
-        task = asyncio.create_task(self.stream(device_id, ws, url))
+        task = asyncio.create_task(self._stream(device_id))
         self.active_streams[device_id] = task
 
-    async def stream(self, device_id, ws, url):
+    async def _stream(self, device_id):
+        ws_stream = None
         try:
+            ws_stream = await websockets.connect(NODE_URL)
+
+            await ws_stream.send(json.dumps({
+                "type": "init_stream", "role": "py_server", "hubID": SERVER_ID, "device": device_id
+                }))
+            
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as resp:
+                async with session.get(f"{CAM_URL}{device_id}") as resp:
                     async for chunk in resp.content.iter_chunked(4096):
-                        await ws.send(chunk)
-        except asyncio.CancelledError:
-            pass
+                        await ws_stream.send(chunk)
+
+        except Exception as e:
+            print(f"Stream socket error: {e}")
         finally:
+            if ws_stream:
+                await ws_stream.close()
             self.active_streams.pop(device_id, None)
 
 
 class NodeConnection:
     def __init__(self, device_manager, stream_manager):
         self.ws = None
-        self.ws_stream = None
         self.device_manager = device_manager
         self.stream_manager = stream_manager
         device_manager.register_callback(self.broadcast_devices)
@@ -70,7 +81,6 @@ class NodeConnection:
     async def connect(self, uri):
         await asyncio.gather(
             self._handle_commands(uri),
-            self._handle_stream(uri)
         )
 
     async def _handle_commands(self, uri):
@@ -80,49 +90,35 @@ class NodeConnection:
                     self.ws = ws
 
                     await ws.send(json.dumps({
-                        "type": "init_conn",
-                        "role": "py_server"
-                    }))
+                        "type": "init_conn", "role": "py_server", "hubID": SERVER_ID, "devices": DeviceManager.list()
+                        }))
+
 
                     async for msg in ws:
                         await self.handle(msg)
-            except:
+            except Exception as e:
+                print(f"Command socket error: {e}")
                 self.ws = None
-                self.ws_stream = None
                 await asyncio.sleep(5)
 
-    async def _handle_stream(self, uri):
-        while True:
-            try:
-                async with websockets.connect(uri) as ws_stream:
-                    self.ws_stream = ws_stream
-                    while True:
-                        asyncio.sleep(3600)
-            except:
-    
     async def broadcast_devices(self, devices_list):
         if self.ws:
             await self.ws.send(json.dumps({
                 "type": "sync_data",
-                "data": devices_list
+                "devices": devices_list
                 }))
     
     async def handle(self, message):
         msg = json.loads(message)
 
-        if msg["type"] == "servo_cmd" or msg["type"] == "laser_cmd":
+        if msg["type"] in ["servo_cmd","laser_cmd"]:
             device = self.device_manager.get(msg["target"])
 
             if device:
                 await device["ws"].send(json.dumps(msg))
         
         elif msg["type"] == "init_stream":
-            if not self.ws:
-                return
-            self.stream_manager.start("need to put device data here", self.ws_stream, f'CAM_URL{msg["target"]}')
-
-        elif msg["type"] == "sync_data":
-            await self.broadcast_devices(self.device_manager.list())
+            self.stream_manager.start(msg["target"])
             
 device_manager = DeviceManager()
 stream_manager = StreamManager()
