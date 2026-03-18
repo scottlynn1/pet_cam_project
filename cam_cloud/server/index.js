@@ -25,6 +25,7 @@ const sessionParser = session({
 });
 console.log(!!process.env.SECURE)
 app.use(sessionParser);
+const { promise, resolve, reject } = Promise.withResolvers();
 
 
 class ClientManager {
@@ -43,32 +44,49 @@ class ClientManager {
       }})
   }
   removeClient(clientID) {
-    delete this.clientIDs.clientID;
+    delete this.clientIDs[clientID];
   }
 }
 
+
 class StreamManager {
-  constructor(hubmanager) {
+  constructor(hubmanager, clientmanager) {
     this.hubmanager = hubmanager
+    this.clientmanager = clientmanager
     this.runningstreams = {}
   }
-  async add_viewer(res, clientID, hubID, deviceID) {
+  async add_viewer(res, hubID, deviceID) {
     console.log(`Browser connecting to stream: ${deviceID}`);
+    if (!this.runningstreams.includes(`${hubID}/${deviceID}`)) {
+      await this.start_stream(res)
+    } else {
+      this.runningstreams[`${hubID}/${deviceID}`] = [...this.runningstreams[`${hubID}/${deviceID}`], res]
+    }
+  }
 
-    await this.hubmanager.hubID.devices[].send(JSON.stringify({ type: 'init_stream', role: "node_server", target: deviceID}))
-    
-    // Forward MJPEG bytes from Pi to browser
-    const forwarder = (message) => {
-      if (res.writableEnded) return;
-      if (message[0] !== 0x7B) {
-        // res.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${message.length}\r\n\r\n`);
-        res.write(message);
-        // res.write('\r\n');
+  async start_stream(res) {
+    await this.hubmanager.hubID.cmd_socket.send(JSON.stringify({ type: 'init_stream', role: "node_server", device: deviceID}))
+    // race condition here with not knowing which stream socket gets returned
+    const ws = await promise
+    this.hubmanager.hubs[hubID].stream_sockets.push(ws)
+
+    this.runningstreams[`${hubID}/${deviceID}`] = [res]
+
+    ws.on("message", () => {
+      let clients = this.runningstreams[`${hubID}/${deviceID}`]
+      for (let client of clients) {
+        if (client.writableEnded) return
+        client.write(message);
       }
-    };
-    
-    // Listen for binary frames
-    pyserver.on("message", forwarder);
+    });
+  }
+  remove_viewer(res, hubID, deviceID, clientID) {
+    const client_ws = this.clientmanager[clientID]
+    const pyserver = this.hubmanager.hubs[hubID].socket
+    stream_socket.off("message", forwarder);
+    console.log(`Browser disconnected from stream ${deviceID}`);
+    // Optional: tell Pi to stop streaming
+    cmd_socket.send(JSON.stringify({ cmd: "stop_stream", deviceID }));
   }
 
 }
@@ -90,8 +108,12 @@ class HubManager {
     })
     this.hubs[hubID] = {
       devices: devices,
-      socket: socket
+      cmd_socket: socket,
+      stream_sockets: []
     }
+  }
+  add_stream_socket(socket, hubID, device) {
+    this.hubs[hubID].stream_sockets.push(socket)
   }
 }
 
@@ -103,7 +125,7 @@ wss.on('connection', (ws, req) => {
       const msg = JSON.parse(message);
       if (msg.type == "init_conn") {
         if (msg.role == "py_server") {
-          HubManager.list().includes(msg.hubID) ? HubManager.add_socket(ws, msg.hubID, msg.devices) : console.log("hub already connected")
+          hubmanager.list().includes(msg.hubID) ? hubmanager.add_cmd_socket(ws, msg.hubID, msg.devices) : console.log("hub already connected")
         } else if (msg.role == "client") {
           let clientID;
           sessionParser(req, {}, () => {
@@ -115,57 +137,20 @@ wss.on('connection', (ws, req) => {
           ClientManager.add_client(ws, clientID)
         }
       } else if (msg.type == "init_stream") {
-        StreamManager.a
+        resolve(ws)
+        hubmanager.add_stream_socket(ws, msg.hubID, msg.device)
       } else {
         console.error("first message on websocket not of type 'init_conn' or 'init_stream'")
       }
     } catch (err) {
       console.error('Failed to parse first message:', err);
     }
-  });
-
-
-
-
-
-  ws.on("close", () => {
-
-  });
-  
-  ws.on('message', (message) => {
-    if (message[0] !== 0x7B) {
-      // Do NOT JSON.parse this
-      // Streaming logic handles this elsewhere
-      return;
-    }
-
-    let msg = JSON.parse(message)
-    console.log('Received message of type', msg.type);
-
-    if (msg.type === "servo_cmd") {
-      console.log('Received data-point', msg.data);
-      if (!pyserver) {
-        console.log('no pyserver connected')
-      } else {
-        pyserver.send(JSON.stringify({ type: "servo_cmd", role: "node_server", data: msg.data, target: msg.target}));
-      }
-      return
-    }
-
-    if (msg.type === "laser_cmd") {
-      if (!pyserver) {
-        console.log('no pyserver connected')
-      } else {
-        pyserver.send(JSON.stringify({ type: "laser_cmd", role: "node_server", data: msg.data, target: msg.target}))
-      }
-      return
-    }
-  })
+  });  
 })
 
 app.get("/device_list", (req, res) => {
   try {
-    res.json({ type: 'sync_data', data: [1, 2, 3] , session: req.sessionID})
+    res.json({ type: 'sync_data', data: hubmanager.hubID.devices , session: req.sessionID})
   } catch (error) {
     console.log(error)
     res.status(500).json({ error: "Internal Server Error" });
@@ -174,7 +159,7 @@ app.get("/device_list", (req, res) => {
 
 app.get("/stream", (req, res) => {
   const deviceID = req.query.streamId;
-  const hubID =req.query.hubID;
+  const hubID = req.query.hubID;
   let clientID
   sessionParser(req, {}, () => {
     console.log('Session ID:', req.sessionID); 
@@ -196,16 +181,11 @@ app.get("/stream", (req, res) => {
     "Connection": "close",
   });
   
-  StreamManager.add_viewer(res, clientID, hubID, deviceID)
-
+  StreamManager.add_viewer(res, hubID, deviceID, clientID);
   
   // When browser disconnects
   req.on("close", () => {
-    FeedManager.remove_viewer();
-    pyserver.off("message", forwarder);
-    console.log(`Browser disconnected from stream ${deviceID}`);
-    // Optional: tell Pi to stop streaming
-    pyserver.send(JSON.stringify({ cmd: "stop_stream", deviceID }));
+    StreamManager.remove_viewer(res, hubID, deviceID, clientID);
   });
 });
 
