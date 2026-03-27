@@ -36,7 +36,7 @@ laserstopButton.addEventListener("click", () => {
 
 async function getData() {
   console.log('fetching...');
-  const url = import.meta.env.PROD ? `https://${window.location.host}/device_list` : `http://${window.location.hostname}:3000/device_list`;
+  const url = import.meta.env.PROD ? `https://${window.location.host}/device_list?hubID=123` : `http://${window.location.hostname}:3000/device_list?hubID=123`;
   try {
     const response = await fetch(url, {
       credentials: "include"
@@ -60,7 +60,8 @@ async function getData() {
       ws.send(JSON.stringify({
         type: "init_conn",
         role: "client",
-        target: "node_server"
+        target: "node_server",
+        hubID: 123
       }))
     };
   } catch (error) {
@@ -73,7 +74,7 @@ const attach = (event) => {
   streamId = event.target.value;
   feedframe.style.display = "block"
   laserButton.style.display = "block"
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}:3000/stream?streamId=${streamId}`)
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}:3000/stream?streamId=${streamId}&hubID=123`)
   feedstopButton.style.display = "block"
 }
 
