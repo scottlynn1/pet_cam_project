@@ -17,18 +17,35 @@ feedstopButton.addEventListener("click", () => {
   laserButton.style.display = "none";
   feedframe.style.display = "none";
   laserstopButton.style.display = "none"
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: streamId, hubID: 123}));
 });
 
-laserButton.addEventListener("click", (e) => {
+function waitForNextMessage(ws) {
+  return new Promise ((resolve) => {
+    const handler = (event) => {
+      if (msg.type == "confirmation") {
+        ws.removeEventListener("message", handler);
+        resolve(JSON.parse(event.data));
+      }
+    }
+
+    ws.addEventListener("message", handler)
+  })
+}
+
+laserButton.addEventListener("click", async (e) => {
   ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
-  control.style.display = "block";
-  laserButton.style.display = "none";
-  laserstopButton.style.display = "block";
+  const response = await waitForNextMessage(ws);
+  if (response.data == "fail") window.alert("laser already being controlled");
+  else if (response.data == "success") {
+    control.style.display = "block";
+    laserButton.style.display = "none";
+    laserstopButton.style.display = "block";
+  }
 });
 
 laserstopButton.addEventListener("click", () => {
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: streamId, hubID: 123}));
   control.style.display = "none";
   laserstopButton.style.display = "none";
   laserButton.style.display = "block";

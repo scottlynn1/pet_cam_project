@@ -64,9 +64,17 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
     if (doc["type"] == "laser_cmd") {
       if (doc["data"] == "on") {
         digitalWrite(13, HIGH)
+        StaticJsonDocument<128> reply;
+        reply["type"] = "status_update";
+        reply["role"] = "cam_1";
+        reply["status"] = "on";
       }
       if (doc["data"] == "off") {
         digitalWrite(13. LOW)
+        StaticJsonDocument<128> reply;
+        reply["type"] = "status_update";
+        reply["role"] = "cam_1";
+        reply["status"] = "off";
       }
     }
 

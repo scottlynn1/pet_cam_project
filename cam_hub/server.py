@@ -19,8 +19,10 @@ class DeviceManager:
     async def register(self, stream_id, role, websocket):
         self.devices[stream_id] = {
             "ws": websocket,
-            "role": role
+            "role": role,
+            "status": "off"
         }
+        websocket.on()
         await self._notify_change()
     
     async def unregister(self, stream_id):
@@ -111,11 +113,22 @@ class NodeConnection:
     async def handle(self, message):
         msg = json.loads(message)
 
-        if msg["type"] in ["servo_cmd","laser_cmd"]:
+        if msg["type"] == "laser_cmd":
             device = self.device_manager.get(msg["target"])
-
             if device:
-                await device["ws"].send(json.dumps(msg))
+              if msg["data"] == "off":
+                device["status"] == "off"
+                device["ws"].send(json.dumps(msg))
+              if msg["data"] == "on":
+                if device["status"] == "on":
+                    self.ws.send(json.dumps({"type": "confirmation", "data": "fail", "clientID": msg["clientID"]}))
+                else:
+                    device["status"] == "on"
+                    await device["ws"].send(json.dumps(msg))
+                    self.ws.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
+
+        if msg["type"] == "servo_cmd":
+            
         
         elif msg["type"] == "init_stream":
             self.stream_manager.start(msg["target"])

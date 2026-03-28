@@ -38,6 +38,7 @@ class ClientManager {
       const msg = JSON.parse(message);
       if (msg.type === "servo_cmd" || msg.type == "laser_cmd") {
         const pyserver = this.hubmanager.hubs[hubID].socket
+        msg["clientID"] = clientID
         pyserver.send(JSON.stringify(msg));
       }})
     }
@@ -57,6 +58,7 @@ class ClientManager {
     async add_viewer(res, hubID, deviceID, clientID) {
       console.log(`Browser connecting to stream: ${deviceID}`);
       let stream = `${hubID}/${deviceID}`
+      // minor race condition here with starting multiple streams
       if (!Object.hasOwn(this.runningstreams, stream)) {
         await this.start_stream(res, hubID, deviceID, clientID)
       } else {
@@ -67,12 +69,12 @@ class ClientManager {
     async start_stream(res, hubID, deviceID, clientID) {
       let stream = `${hubID}/${deviceID}`
       const { promise, resolve } = Promise.withResolvers();
-      
-      this.pendingstreams[clientID] = resolve
-      this.hubmanager.hubs[hubID].socket.send(JSON.stringify({ type: 'init_stream', role: "node_server", device: deviceID, socket_id: clientID}))
+      const requestId = `${clientID}-${Date.now()}`
+      this.pendingstreams[requestId] = resolve
+      this.hubmanager.hubs[hubID].socket.send(JSON.stringify({ type: 'init_stream', role: "node_server", device: deviceID, socket_id: requestId}))
       // race condition here with not knowing which stream socket gets returned
       let ws = await promise
-      delete this.pendingstreams[clientID];
+      delete this.pendingstreams[requestId];
       this.runningstreams[stream] = { streamSocket: ws, viewers: new Set([res]) }
 
       ws.on("message", (message) => {
@@ -104,8 +106,9 @@ class ClientManager {
   
 
 class HubManager {
-  constructor() {
-    this.hubs = {}
+  constructor(clientmanager) {
+    this.hubs = {};
+    this.clientmanager = clientmanager;
   }
 
   add_socket(socket, hubID, devices) {
@@ -113,6 +116,9 @@ class HubManager {
       const msg = JSON.parse(message);
       if (msg.type == "sync_data") {
         this.hubs[msg.hubID].devices = msg.devices
+      }
+      if (msg.type == "confirmation") {
+        this.clientmanager.clientIDs[msg.clientID].send(JSON.stringify({ msg }))
       }
 
     })
@@ -149,7 +155,6 @@ wss.on('connection', (ws, req) => {
         const resolve = streammanager.pendingstreams[msg.socket_id];
         if (resolve) {
           resolve(ws);
-          delete streammanager.pendingstreams[msg.socket_id];
         } else {
           console.error ("No pending stream for", msg.clientID);
         }
