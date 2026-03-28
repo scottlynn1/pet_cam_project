@@ -126,12 +126,16 @@ class NodeConnection:
                     device["status"] == "on"
                     await device["ws"].send(json.dumps(msg))
                     self.ws.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
-
+                    
         if msg["type"] == "servo_cmd":
-            
+            device = self.device_manager.get(msg["target"])
+
+            if device:
+                await device["ws"].send(json.dumps(msg))
         
         elif msg["type"] == "init_stream":
             self.stream_manager.start(msg["target"])
+
             
 device_manager = DeviceManager()
 stream_manager = StreamManager()
