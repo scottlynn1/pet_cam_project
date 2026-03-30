@@ -43,21 +43,21 @@ class StreamManager:
     def __init__(self):
         self.active_streams = {}
 
-    async def start(self, device_id):
+    async def start(self, device_id, socket_id):
         if device_id in self.active_streams:
             return
 
         
-        task = asyncio.create_task(self._stream(device_id))
+        task = asyncio.create_task(self._stream(device_id, socket_id))
         self.active_streams[device_id] = task
 
-    async def _stream(self, device_id):
+    async def _stream(self, device_id, socket_id):
         ws_stream = None
         try:
             ws_stream = await websockets.connect(NODE_URL)
 
             await ws_stream.send(json.dumps({
-                "type": "init_stream", "role": "py_server", "hubID": SERVER_ID, "device": device_id
+                "type": "init_stream", "role": "py_server", "hubID": SERVER_ID, "device": device_id, "socket_id": socket_id
                 }))
             
             async with aiohttp.ClientSession() as session:
@@ -121,7 +121,7 @@ class NodeConnection:
             if device:
               if msg["data"] == "off":
                 device["status"] = "off"
-                device["ws"].send(json.dumps(msg))
+                await device["ws"].send(json.dumps(msg))
               if msg["data"] == "on":
                 print("executing data on cond")
                 if device["status"] == "on":
@@ -140,7 +140,7 @@ class NodeConnection:
                 await device["ws"].send(json.dumps(msg))
         
         elif msg["type"] == "init_stream":
-            self.stream_manager.start(msg["target"])
+            await self.stream_manager.start(msg["device"], msg["socket_id"])
 
             
 device_manager = DeviceManager()

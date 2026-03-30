@@ -59,7 +59,6 @@ class ClientManager {
     async add_viewer(res, hubID, deviceID, clientID) {
       console.log(`Browser connecting to stream: ${deviceID}`);
       let stream = `${hubID}/${deviceID}`
-      // minor race condition here with starting multiple streams
       if (!Object.hasOwn(this.runningstreams, stream)) {
         await this.start_stream(res, hubID, deviceID, clientID)
       } else {
@@ -79,7 +78,7 @@ class ClientManager {
       this.runningstreams[stream] = { streamSocket: ws, viewers: new Set([res]) }
 
       ws.on("message", (message) => {
-        let clients = this.runningstreams[stream].viewers
+        let clients = this.runningstreams[stream]?.viewers || [];
         for (let client of clients) {
           if (client.writableEnded) {
             clients.delete(client);
@@ -190,8 +189,8 @@ const runSession = (req, res) => {
   return new Promise((resolve, reject) => {
     sessionParser(req, res, (err) => {
       if (err) return reject(err);
-      console.log(req.session(ID));
-      resolve(req.session(ID));
+      console.log(req.sessionID);
+      resolve(req.sessionID);
     });
   });
 };
@@ -200,6 +199,7 @@ app.get("/stream", async (req, res) => {
   const deviceID = req.query.streamId;
   const hubID = req.query.hubID;
   let clientID = await runSession(req, res);
+  console.log(deviceID, hubID, clientID)
       
   res.removeHeader('ETag');
   

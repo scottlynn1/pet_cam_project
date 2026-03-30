@@ -94,7 +94,7 @@ const attach = (event) => {
   streamId = event.target.value;
   feedframe.style.display = "block"
   laserButton.style.display = "block"
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}:3000/stream?streamId=${streamId}&hubID=123`)
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?streamId=${streamId}&hubID=123`)
   feedstopButton.style.display = "block"
 }
 

@@ -69,6 +69,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       }
       
       if (doc["type"] == "laser_cmd") {
+        Serial.println(doc["data"].as<const char*>());
         if (doc["data"] == "on") {
           digitalWrite(13, HIGH);
           StaticJsonDocument<128> reply;
