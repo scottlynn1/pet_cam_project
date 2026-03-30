@@ -107,8 +107,8 @@ void setupWebSocket() {
 
 
 void moveServos(float pan, float tilt) {
-  panServo.write(pan * 180);
-  tiltServo.write(tilt * 180);
+  panServo.write(pan);
+  tiltServo.write(tilt);
 }
 
 void setupHttp() {

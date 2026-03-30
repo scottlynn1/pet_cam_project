@@ -101,14 +101,35 @@ const attach = (event) => {
 
 getData();
 
+let lastSendTime = 0;
+const throttleMS = 50;
+let lastSentX = -1;
+let lastSentY = -1;
+const threshold = 0.02;
 
+function sendServoData(x, y) {
+  const now = Date.now();
+  const hasMovedEnough = Math.abs(x - lastSentX) > threshold || Math.abs(y - lastSentY) > threshold;
+
+  if (now - lastSendTime > throttleMS && hasMovedEnough) {
+    ws.send(JSON.stringify({ 
+      type: "servo_cmd", 
+      role: "client", 
+      data: { x, y }, 
+      target: streamId
+    }))
+    lastSentX = x;
+    lastSentY = y;
+    lastSendTime = now;
+  }
+}
 
 control.addEventListener("touchstart", e => {
   e.preventDefault();
   let rect = control.getBoundingClientRect();
   let x = (e.touches[0].clientX - rect.left) / rect.width;
   let y = (e.touches[0].clientY - rect.top) / rect.height;
-  ws.send(JSON.stringify({ type: "servo_cmd", role: "client", data: { x, y }, target: streamId}))
+  sendServoData(x, y);
   console.log(x);
   console.log(y);
 })
@@ -119,7 +140,7 @@ control.addEventListener("touchmove", e => {
   [...e.touches].forEach(touch => {
     let x = (touch.clientX - rect.left) / rect.width;
     let y = (touch.clientY - rect.top) / rect.height;
-    ws.send(JSON.stringify({ type: "servo_cmd", role: "client", data: { x, y }, target: streamId}))
+    sendServoData(x, y)
     console.log(x)
     console.log(y)
   })
@@ -130,7 +151,7 @@ control.addEventListener("touchend", (e) => {
   let rect = control.getBoundingClientRect();
   let x = (e.changedTouches[0].clientX - rect.left) / rect.width;
   let y = (e.changedTouches[0].clientY - rect.top) / rect.height;
-  ws.send(JSON.stringify({ type: "servo_cmd", role: "client", data: { x, y }, target: streamId}))
+  sendServoData(x, y)
   console.log(x);
   console.log(y);
 })
