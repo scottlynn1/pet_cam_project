@@ -37,17 +37,18 @@ class ClientManager {
     ws.on("message", (message) => {
       const msg = JSON.parse(message);
       if (msg.type === "servo_cmd" || msg.type == "laser_cmd") {
+	console.log(msg)
         const pyserver = this.hubmanager.hubs[hubID].socket
         msg["clientID"] = clientID
         pyserver.send(JSON.stringify(msg));
-      }})
-    }
-    remove_client(clientID) {
+      }
+    }) 
+    ws.on("close", () => {
       delete this.clientIDs[clientID];
-    }
+    })
   }
-  
-  
+}
+ 
   class StreamManager {
     constructor(hubmanager) {
       this.runningstreams = {}
@@ -112,26 +113,34 @@ class HubManager {
   }
 
   add_socket(socket, hubID, devices) {
+    console.log(typeof hubID)
+    this.hubs[hubID] = {
+        devices: devices,
+        socket
+    }
     socket.on("message", (message) => {
       const msg = JSON.parse(message);
+      console.log(msg);
       if (msg.type == "sync_data") {
+	console.log(typeof msg.hubID);
         this.hubs[msg.hubID].devices = msg.devices
       }
       if (msg.type == "confirmation") {
-        this.clientmanager.clientIDs[msg.clientID].send(JSON.stringify({ msg }))
+        this.clientmanager.clientIDs[msg.clientID].send(JSON.stringify( msg ))
       }
 
     })
-    this.hubs[hubID] = {
-      devices: devices,
-      socket
-    }
+    socket.on('close', () => {
+	delete this.hubs[hubID];
+    })
   }
 }
 
-const hubmanager = new HubManager()
-const streammanager = new StreamManager(hubmanager)
-const clientmanager = new ClientManager(hubmanager)
+const hubmanager = new HubManager();
+const clientmanager = new ClientManager(hubmanager);
+const streammanager = new StreamManager(hubmanager);
+
+hubmanager.clientmanager = clientmanager;
 
 wss.on('connection', (ws, req) => {
   console.log('ws connection made')
@@ -164,33 +173,33 @@ wss.on('connection', (ws, req) => {
     } catch (err) {
       console.error('Failed to parse first message:', err);
     }
-  });  
+  });
 })
 
 app.get("/device_list", (req, res) => {
   try {
-    let hubID = parseInt(req.query.hubID)
-    res.json({ type: 'sync_data', data: hubmanager.hubs[hubID].devices , session: req.sessionID})
+    let hubID = req.query.hubID
+    res.json({ type: 'sync_data', data: hubmanager.hubs[hubID].devices , session: req.sessionID })
   } catch (error) {
     console.log(error)
     res.status(500).json({ error: "Internal Server Error" });
   }
 })
 
-app.get("/stream", (req, res) => {
+const runSession = (req, res) => {
+  return new Promise((resolve, reject) => {
+    sessionParser(req, res, (err) => {
+      if (err) return reject(err);
+      console.log(req.session(ID));
+      resolve(req.session(ID));
+    });
+  });
+};
+
+app.get("/stream", async (req, res) => {
   const deviceID = req.query.streamId;
   const hubID = req.query.hubID;
-  let clientID;
-  sessionParser(req, {}, () => {
-    console.log('Session ID:', req.sessionID); 
-    // Now req.sessionID and req.session will be populated!
-    clientID = req.sessionID
-    if (!req.sessionID) {
-        console.log("No session found for this connection.");
-    }})
-    // if (!pyserver || pyserver.readyState !== WebSocket.OPEN) {
-      //   return res.status(503).send("Stream not available");
-      // }
+  let clientID = await runSession(req, res);
       
   res.removeHeader('ETag');
   

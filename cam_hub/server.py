@@ -4,7 +4,7 @@ import json
 import aiohttp
 
 PORT = 5000
-NODE_URL = 'ws://project4.scottlynn.live/ws'
+NODE_URL = 'wss://project4.scottlynn.live/ws'
 CAM_URL = "http://esp32cam.local/stream/"
 SERVER_ID = 123
 
@@ -22,7 +22,6 @@ class DeviceManager:
             "role": role,
             "status": "off"
         }
-        websocket.on()
         await self._notify_change()
     
     async def unregister(self, stream_id):
@@ -30,6 +29,7 @@ class DeviceManager:
         await self._notify_change()
 
     def get(self, stream_id):
+        print(self.devices)
         return self.devices.get(stream_id)
 
     def list(self):
@@ -92,7 +92,7 @@ class NodeConnection:
                     self.ws = ws
 
                     await ws.send(json.dumps({
-                        "type": "init_conn", "role": "py_server", "hubID": SERVER_ID, "devices": DeviceManager.list()
+                        "type": "init_conn", "role": "py_server", "hubID": SERVER_ID, "devices": device_manager.list()
                         }))
 
 
@@ -107,25 +107,31 @@ class NodeConnection:
         if self.ws:
             await self.ws.send(json.dumps({
                 "type": "sync_data",
-                "devices": devices_list
+                "devices": devices_list,
+		"hubID": SERVER_ID
                 }))
     
     async def handle(self, message):
         msg = json.loads(message)
 
         if msg["type"] == "laser_cmd":
-            device = self.device_manager.get(msg["target"])
+            print(msg)
+            device = self.device_manager.get(msg["device"])
+            print(device)
             if device:
               if msg["data"] == "off":
-                device["status"] == "off"
+                device["status"] = "off"
                 device["ws"].send(json.dumps(msg))
               if msg["data"] == "on":
+                print("executing data on cond")
                 if device["status"] == "on":
-                    self.ws.send(json.dumps({"type": "confirmation", "data": "fail", "clientID": msg["clientID"]}))
+                    print("executing device status on")
+                    await self.ws.send(json.dumps({"type": "confirmation", "data": "fail", "clientID": msg["clientID"]}))
                 else:
-                    device["status"] == "on"
+                    print("executing device status off")
+                    device["status"] = "on"
                     await device["ws"].send(json.dumps(msg))
-                    self.ws.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
+                    await self.ws.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
                     
         if msg["type"] == "servo_cmd":
             device = self.device_manager.get(msg["target"])
@@ -143,20 +149,24 @@ node_connection = NodeConnection(device_manager, stream_manager)
 
 
 async def listen(websocket):
-    print("ESP32 connected")
-    streamId = None
-    await websocket.send(json.dumps({
-        "type":"init_conn",
-        "role":"py_server"
-    }))
+    print("ESP32 connecting")
     try:
-        async for msg in websocket:
-            device_data = json.loads(msg)
-            streamId = device_data["streamId"]
-            print("Registering: ", device_data["role"], " with streamId: ", streamId)
-            await device_manager.register(device_data["streamId"], device_data["role"], websocket)
-    except websockets.exceptions.ConnectionClosed:
-        print("ESP32 disconnected: connecton failed")
+      streamId = None
+      await websocket.send(json.dumps({
+          "type":"init_conn",
+          "role":"py_server"
+      }))
+      print("init msg sent")
+      async for msg in websocket:
+          print(msg)
+          device_data = json.loads(msg)
+          streamId = str(device_data["streamId"])
+          print("Registering: ", device_data["role"], " with streamId: ", streamId)
+          await device_manager.register(streamId, device_data["role"], websocket)
+    except websockets.exceptions.ConnectionClosed as e:
+        print(f"ESP32 disconnected: {e.code} - {e.reason}")
+    except Exception as e:
+        print(f"CRITICAL ERROR: {e}")
 
     finally:
         if streamId and streamId in device_manager.list():
@@ -173,7 +183,6 @@ async def start_server():
     )
     print(f"WebSocket server listening on {PORT}")
     await server.wait_closed()
-
 
 
 # def cancel_stream():

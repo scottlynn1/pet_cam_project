@@ -23,9 +23,11 @@ feedstopButton.addEventListener("click", () => {
 function waitForNextMessage(ws) {
   return new Promise ((resolve) => {
     const handler = (event) => {
-      if (msg.type == "confirmation") {
+      const data = JSON.parse(event.data)
+      console.log(data)
+      if (data.type == "confirmation") {
         ws.removeEventListener("message", handler);
-        resolve(JSON.parse(event.data));
+        resolve(data);
       }
     }
 
@@ -36,6 +38,7 @@ function waitForNextMessage(ws) {
 laserButton.addEventListener("click", async (e) => {
   ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
   const response = await waitForNextMessage(ws);
+  console.log(response)
   if (response.data == "fail") window.alert("laser already being controlled");
   else if (response.data == "success") {
     control.style.display = "block";

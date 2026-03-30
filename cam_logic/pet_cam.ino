@@ -47,49 +47,55 @@ AsyncWebServer server(80);
 volatile bool streaming = false;
 
 void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
-  if (type == WStype_TEXT) {
-    StaticJsonDocument<200> doc;
-    deserializeJson(doc, payload, len);
+  switch(type) {
+    case WStype_CONNECTED:
+      Serial.println("WebSocket Connected to Pi!");
+      break;
+    case WStype_DISCONNECTED:
+      Serial.println("WebSocket Disconnected!");
+      break;
+    case WStype_TEXT:
+      StaticJsonDocument<200> doc;
+      deserializeJson(doc, payload, len);
 
-    if (doc["type"] == "servo_cmd") {
-      float pan = doc["data"]["x"] * 90;
-      float tilt = doc["data"]["y"] * 45;
-      Serial.print("Pan: "); 
-      Serial.print(pan);
-      Serial.print(" | Tilt: "); 
-      Serial.println(tilt);
-      moveServos(pan, tilt);
-    }
-    
-    if (doc["type"] == "laser_cmd") {
-      if (doc["data"] == "on") {
-        digitalWrite(13, HIGH)
-        StaticJsonDocument<128> reply;
-        reply["type"] = "status_update";
-        reply["role"] = "cam_1";
-        reply["status"] = "on";
+      if (doc["type"] == "servo_cmd") {
+        float pan = doc["data"]["x"].as<float>() * 90;
+        float tilt = doc["data"]["y"].as<float>() * 45;
+        Serial.print("Pan: "); 
+        Serial.print(pan);
+        Serial.print(" | Tilt: "); 
+        Serial.println(tilt);
+        moveServos(pan, tilt);
       }
-      if (doc["data"] == "off") {
-        digitalWrite(13. LOW)
-        StaticJsonDocument<128> reply;
-        reply["type"] = "status_update";
-        reply["role"] = "cam_1";
-        reply["status"] = "off";
+      
+      if (doc["type"] == "laser_cmd") {
+        if (doc["data"] == "on") {
+          digitalWrite(13, HIGH);
+          StaticJsonDocument<128> reply;
+          reply["type"] = "status_update";
+          reply["role"] = "cam_1";
+          reply["status"] = "on";
+        }
+        if (doc["data"] == "off") {
+          digitalWrite(13, LOW);
+          StaticJsonDocument<128> reply;
+          reply["type"] = "status_update";
+          reply["role"] = "cam_1";
+          reply["status"] = "off";
+        }
       }
-    }
 
-    if (doc["type"] == "init_conn") {
-      Serial.println("init_conn received from Pi");
-      StaticJsonDocument<128> reply;
-      reply["type"] = "init_conn";
-      reply["role"] = "cam_1";
-      reply["streamId"] = 1;
+      if (doc["type"] == "init_conn") {
+        Serial.println("init_conn received from Pi");
+        StaticJsonDocument<128> reply;
+        reply["type"] = "init_conn";
+        reply["role"] = "cam_1";
+        reply["streamId"] = 1;
 
-      String out;
-      serializeJson(reply, out);
-      ws.sendTXT(out);
-    }
-
+        String out;
+        serializeJson(reply, out);
+        ws.sendTXT(out);
+      }
   }
 }
 
@@ -205,9 +211,7 @@ void setup() {
   setupHttp();
 }
 
+
 void loop() {
   ws.loop();
-  Serial.print("RSSI: ");
-  Serial.println(WiFi.RSSI());
-  delay(2000);
 }
