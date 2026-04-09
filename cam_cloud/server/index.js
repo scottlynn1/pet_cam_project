@@ -3,13 +3,22 @@ import session from "express-session"
 import dotenv from 'dotenv';
 import http from "http";
 import cors from "cors";
-
 import { WebSocketServer } from 'ws';
+import fs from'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const timeoutBuffer = fs.readFileSync(path.join(__dirname, 'assets/timeout.jpg'));
+const offlineBuffer = fs.readFileSync(path.join(__dirname, 'assets/offline.jpg'));
+const errorBuffer   = fs.readFileSync(path.join(__dirname, 'assets/error.jpg'));
+// set up development or production env vars
 const env = process.env.NODE_ENV || 'development';
 dotenv.config({
   path: `.env.${env}`,
 });
 const PORT = parseInt(process.env.PORT);
+
+// initialize express app, ws server, and middleware
 const app = express();
 app.use(cors({
   origin: 'http://localhost:5173',
@@ -17,6 +26,8 @@ app.use(cors({
 }));
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+
+// need to change the session architecture to JWT to allow for easier integration of phone app to exist along side web app
 const sessionParser = session({
   secret: process.env.SESSION_SECRET,
   resave: false,
@@ -28,74 +39,140 @@ app.use(sessionParser);
 
 class ClientManager {
   constructor(hubmanager) {
-    this.clientIDs = {};
+    this.clientsockets = {};
     this.hubmanager = hubmanager
   }
-  //need to finish websocket with listeners
   add_client(ws, hubID, clientID) {
-    this.clientIDs[clientID] = ws;
+    console.log(`adding client:\n  hubID: ${hubID}\n  clientID: ${clientID}`)
+    this.clientsockets[clientID] = ws;
     ws.on("message", (message) => {
       const msg = JSON.parse(message);
       if (msg.type === "servo_cmd" || msg.type == "laser_cmd") {
-	console.log(msg)
-        const pyserver = this.hubmanager.hubs[hubID].socket
-        msg["clientID"] = clientID
-        pyserver.send(JSON.stringify(msg));
+	      console.log(`Message recieved on client socket with clientID: ${clientID}\n  ${msg}`)
+        const pyserver = this.hubmanager.hubs[hubID]?.socket
+        if (pyserver) {
+          msg["clientID"] = clientID
+          pyserver.send(JSON.stringify(msg));
+          console.log(`message relayed to hub: ${hubID}`)
+        } else {
+          console.error(`camera hub: ${hubID} is offline`)
+          ws.send(JSON.stringify({ type: "error", data: "camera hub offline" }))
+        }
       }
     }) 
     ws.on("close", () => {
-      delete this.clientIDs[clientID];
+      delete this.clientsockets[clientID];
+      console.log(`client ws connection with client ID: ${clientID}`)
     })
   }
 }
  
   class StreamManager {
     constructor(hubmanager) {
-      this.runningstreams = {}
-      this.hubmanager = hubmanager
-      this.pendingstreams = {}
+      this.runningstreams = {};
+      this.hubmanager = hubmanager;
+      this.pendingstreams = {};
+      this.timeoutMs = 5000;
+      // need to add an initialingstreams logic to avoid race conditions
     }
+
+    async sendErrorFrame(res, buffer) {
+    if (res.writableEnded) return;
+    res.write(`--frame\r\n`);
+    res.write(`Content-Type: image/jpeg\r\n`);
+    res.write(`Content-Length: ${buffer.length}\r\n\r\n`);
+    res.write(buffer);
+    res.write(`\r\n`);
+    setTimeout(() => res.end(), 100);
+  }
     
     async add_viewer(res, hubID, deviceID, clientID) {
-      console.log(`Browser connecting to stream: ${deviceID}`);
+      console.log(`Client: ${clientID} connecting to stream: ${deviceID} on hub: ${hubID}`);
       let stream = `${hubID}/${deviceID}`
       if (!Object.hasOwn(this.runningstreams, stream)) {
         await this.start_stream(res, hubID, deviceID, clientID)
       } else {
         this.runningstreams[stream].viewers.add(res)
+        console.log(`client: ${clientID} added to stream: ${deviceID} on hub: ${hubID}`)
       }
     }
     
     async start_stream(res, hubID, deviceID, clientID) {
       let stream = `${hubID}/${deviceID}`
-      const { promise, resolve } = Promise.withResolvers();
-      const requestId = `${clientID}-${Date.now()}`
-      this.pendingstreams[requestId] = resolve
-      this.hubmanager.hubs[hubID].socket.send(JSON.stringify({ type: 'init_stream', role: "node_server", device: deviceID, socket_id: requestId}))
-      // race condition here with not knowing which stream socket gets returned
-      let ws = await promise
-      delete this.pendingstreams[requestId];
-      this.runningstreams[stream] = { streamSocket: ws, viewers: new Set([res]) }
-
-      ws.on("message", (message) => {
-        let clients = this.runningstreams[stream]?.viewers || [];
-        for (let client of clients) {
-          if (client.writableEnded) {
-            clients.delete(client);
-            continue;
+      let timer; // Scope the timer ID so finally can see it
+      //checking again if stream initiated by another client to avoid race conditions and duplicate streams
+      if (this.runningstreams[stream]) {
+        this.runningstreams[stream].viewers.add(res);
+        console.log(`client: ${clientID} added to stream: ${deviceID} on hub: ${hubID}`)
+        return; 
+      }
+      if (!this.hubmanager.hubs[hubID]) {
+        throw new Error("HUB_OFFLINE");
+      }        
+      try {
+        //set up promise that resolves after message is sent to hub to open up a ws
+        const { promise, resolve, reject } = Promise.withResolvers();
+        const requestId = `${clientID}-${Date.now()}`
+        this.pendingstreams[requestId] = resolve
+        // time out if ws connection takes too long
+        timer = setTimeout(() => {
+          delete this.pendingstreams[requestId];
+          reject(new Error ("HUB_TIMEOUT"));
+        }, this.timeoutMs);
+        console.log(`opening back channel ws with hub: ${hubID} for stream: ${deviceID}`)
+        this.hubmanager.hubs[hubID].socket.send(JSON.stringify({ type: 'init_stream', role: "node_server", device: deviceID, socket_id: requestId}))
+        let ws = await promise
+        this.runningstreams[stream] = { streamSocket: ws, viewers: new Set([res]) }
+  
+        // set up listener that sends jpeg frames to clients res objects that are subscribed to stream 
+        ws.on("message", (message) => {
+          let clients = this.runningstreams[stream]?.viewers || [];
+          for (let client of clients) {
+            if (client.writableEnded) {
+              clients.delete(client);
+              continue;
+            }
+            client.write(message);
           }
-          client.write(message);
-        }
-      });
-  }
+        });
+        // close stream for all clients on close initiated from hub
+        ws.on("close", () => {
+          let clients = this.runningstreams[stream]?.viewers || [];
+          for (let client of clients) { 
+            if (client.writableEnded) return; 
+            client.end();
+          }
+          delete this.runningstreams[stream];
+        });
+        // res.on('error', ... )
 
-  remove_viewer(res, hubID, deviceID) {
+      } catch (err) {
+        console.error(`Stream start failed: ${err.message}`);
+        
+        // Determine which image to send
+        let img = errorBuffer;
+        if (err.message === "HUB_TIMEOUT") img = timeoutBuffer;
+        if (err.message === "HUB_OFFLINE") img = offlineBuffer;
+        
+        await this.sendErrorFrame(res, img);
+      } finally {
+        clearTimeout(timer);
+        delete this.pendingstreams[requestId];
+      }
+    }
+
+  remove_viewer(res, hubID, deviceID, clientID) {
+    console.log(`Client: ${clientID} disconnecting from stream: ${deviceID} on hub: ${hubID}`)
     let stream = `${hubID}/${deviceID}`
-    const s = this.runningstreams[stream]
-    if (!s) return
-    s.viewers.delete(res);
-    if (!s.viewers.size) {
-      s.streamSocket.close()
+    const runningstream = this.runningstreams[stream]
+    if (!runningstream) {
+      console.log("no runningstream to disconnect from")
+      return
+    }
+    runningstream.viewers.delete(res);
+    if (!runningstream.viewers.size) {
+      console.log(`Stoping stream`)
+      runningstream.streamSocket.close()
       delete this.runningstreams[stream]
     }
   }
@@ -112,25 +189,28 @@ class HubManager {
   }
 
   add_socket(socket, hubID, devices) {
-    console.log(typeof hubID)
+    console.log(`registering hub: ${hubID}`)
     this.hubs[hubID] = {
         devices: devices,
         socket
     }
     socket.on("message", (message) => {
       const msg = JSON.parse(message);
-      console.log(msg);
+      console.log(`Message of type: ${msg.type} recieved from hub: ${hubID}`)
       if (msg.type == "sync_data") {
-	console.log(typeof msg.hubID);
-        this.hubs[msg.hubID].devices = msg.devices
+        if (this.hubs[msg.hubID]) {
+          this.hubs[msg.hubID].devices = msg.devices
+          console.log(`Devices: ${msg.devices} registerd to hub: ${hubID}`)
+        }
       }
       if (msg.type == "confirmation") {
-        this.clientmanager.clientIDs[msg.clientID].send(JSON.stringify( msg ))
+        this.clientmanager.clientsockets[msg.clientID].send(JSON.stringify( msg ))
       }
 
     })
     socket.on('close', () => {
-	delete this.hubs[hubID];
+      console.log(`unregistering hub: ${hubID}`)
+	    delete this.hubs[hubID];
     })
   }
 }
@@ -142,10 +222,10 @@ const streammanager = new StreamManager(hubmanager);
 hubmanager.clientmanager = clientmanager;
 
 wss.on('connection', (ws, req) => {
-  console.log('ws connection made')
   ws.once('message', (message) => {
     try {
       const msg = JSON.parse(message);
+      console.log(`Connection initiated with message of type: ${msg.type} recieved`)
       if (msg.type == "init_conn") {
         if (msg.role == "py_server") {
           !Object.hasOwn(hubmanager.hubs, msg.hubID) ? hubmanager.add_socket(ws, msg.hubID, msg.devices) : console.log("hub already connected")
@@ -178,7 +258,12 @@ wss.on('connection', (ws, req) => {
 app.get("/device_list", (req, res) => {
   try {
     let hubID = req.query.hubID
-    res.json({ type: 'sync_data', data: hubmanager.hubs[hubID].devices , session: req.sessionID })
+    if (hubmanager.hubs[hubID]) {
+      res.json({ type: 'sync_data', data: hubmanager.hubs[hubID].devices , session: req.sessionID })
+    } else {
+      res.json({type: "error", data: `hub ${hubID} is offline`})
+      console.log(`hub ${hubID} is offline`)
+    }
   } catch (error) {
     console.log(error)
     res.status(500).json({ error: "Internal Server Error" });
@@ -198,9 +283,13 @@ const runSession = (req, res) => {
 app.get("/stream", async (req, res) => {
   const deviceID = req.query.streamId;
   const hubID = req.query.hubID;
-  let clientID = await runSession(req, res);
-  console.log(deviceID, hubID, clientID)
-      
+  let clientID;
+  try {
+    clientID = await runSession(req, res);
+    console.log(deviceID, hubID, clientID)
+  } catch (err) {
+    console.log(err.message)
+  }
   res.removeHeader('ETag');
   
   res.writeHead(200, {
@@ -214,7 +303,7 @@ app.get("/stream", async (req, res) => {
   
   // When browser disconnects
   req.on("close", () => {
-    streammanager.remove_viewer(res, hubID, deviceID);
+    streammanager.remove_viewer(res, hubID, deviceID, clientID);
   });
 });
 
