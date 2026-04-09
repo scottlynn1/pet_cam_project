@@ -17,7 +17,7 @@ feedstopButton.addEventListener("click", () => {
   laserButton.style.display = "none";
   feedframe.style.display = "none";
   laserstopButton.style.display = "none"
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", target: streamId, hubID: 123}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: streamId, hubID: 123}));
 });
 
 function waitForNextMessage(ws) {
@@ -80,7 +80,7 @@ async function getData() {
       ws.send(JSON.stringify({
         type: "init_conn",
         role: "client",
-        target: "node_server",
+        device: "node_server",
         hubID: 123
       }))
     };
@@ -118,7 +118,7 @@ function sendServoData(x, y) {
       type: "servo_cmd", 
       role: "client", 
       data: { x, y }, 
-      target: streamId
+      device: streamId
     }))
     lastSentX = x;
     lastSentY = y;

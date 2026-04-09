@@ -134,7 +134,7 @@ class NodeConnection:
     async def _handle(self, message):
         msg = json.loads(message)
         print(f"message recieved from node server:\n  {msg}")
-        device = self.device_manager.get(msg["target"])
+        device = self.device_manager.get(msg["device"])
         if device:
             if msg["type"] == "laser_cmd":
                 if msg["data"] == device["status"]:
@@ -150,7 +150,7 @@ class NodeConnection:
 
             elif msg["type"] == "init_stream":
                 print(f"init stream cmd recieved, passing to stream manager")
-                await self.stream_manager.start(msg["target"], msg["socket_id"])
+                await self.stream_manager.start(msg["device"], msg["socket_id"])
         else:
             print("device not found in device registery")    
 
