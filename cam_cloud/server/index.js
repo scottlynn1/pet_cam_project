@@ -37,7 +37,7 @@ class ClientManager {
     ws.on("message", (message) => {
       const msg = JSON.parse(message);
       if (msg.type === "servo_cmd" || msg.type == "laser_cmd") {
-	console.log(msg)
+	      console.log(msg)
         const pyserver = this.hubmanager.hubs[hubID].socket
         msg["clientID"] = clientID
         pyserver.send(JSON.stringify(msg));

@@ -11,33 +11,51 @@ SERVER_ID = 123
 class DeviceManager:
     def __init__(self):
         self.devices = {}
-        self.on_change_callbacks = []
-
-    def register_callback(self, callback):
-        self.on_change_callbacks.append(callback)
+        self.comm_socket = None
+        self.on_change_callback = None
 
     async def register(self, stream_id, role, websocket):
+        print(f"registering device: {role} with stream_id: {stream_id}")
         self.devices[stream_id] = {
             "ws": websocket,
             "role": role,
             "status": "off"
         }
-        await self._notify_change()
+
+        if self.comm_socket:
+            print(f"sending device list update for devices: {self.list()}")
+            await self.comm_socket.send(json.dumps({
+                "type": "sync_data",
+                "devices": self.list(),
+		            "hubID": SERVER_ID
+            }))
+
+        async for msg in websocket:
+            msg = json.loads(msg)
+            self.devices[stream_id]["status"] = msg["status"]
+            # need to check for message type
+            if self.comm_socket:
+                await self.comm_socket.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
+                print(f"device status for device: {msg["role"]} change to {msg["status"]}")
+            else:
+                print("comm_socket closed early")
     
     async def unregister(self, stream_id):
-        self.devices.pop(stream_id, None)
-        await self._notify_change()
+        removed_device = self.devices.pop(stream_id, None)
+        if removed_device is not None:
+            print(f"unregistering device: {removed_device["role"]} with stream_id: {stream_id}")
+            await self.comm_socket.send(json.dumps({
+                "type": "sync_data",
+                "devices": self.list(),
+		            "hubID": SERVER_ID
+            }))
 
     def get(self, stream_id):
-        print(self.devices)
         return self.devices.get(stream_id)
 
     def list(self):
         return list(self.devices.keys())
     
-    async def _notify_change(self):
-        for cb in self.on_change_callbacks:
-            await cb(self.list())
 
 class StreamManager:
     def __init__(self):
@@ -45,6 +63,7 @@ class StreamManager:
 
     async def start(self, device_id, socket_id):
         if device_id in self.active_streams:
+            print(f"device: {device_id} already in active streams")
             return
 
         
@@ -59,7 +78,7 @@ class StreamManager:
             await ws_stream.send(json.dumps({
                 "type": "init_stream", "role": "py_server", "hubID": SERVER_ID, "device": device_id, "socket_id": socket_id
                 }))
-            
+            print(f"starting ws video stream for device: {device_id}")
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{CAM_URL}{device_id}") as resp:
                     async for chunk in resp.content.iter_chunked(4096):
@@ -69,6 +88,7 @@ class StreamManager:
             print(f"Stream socket error: {e}")
         finally:
             if ws_stream:
+                print(f"closing and removing stream from active streams for device: {device_id}")
                 await ws_stream.close()
             self.active_streams.pop(device_id, None)
 
@@ -78,69 +98,61 @@ class NodeConnection:
         self.ws = None
         self.device_manager = device_manager
         self.stream_manager = stream_manager
-        device_manager.register_callback(self.broadcast_devices)
 
     async def connect(self, uri):
-        await asyncio.gather(
-            self._handle_commands(uri),
-        )
-
-    async def _handle_commands(self, uri):
         while True:
             try:
                 async with websockets.connect(uri) as ws:
                     self.ws = ws
-
+                    self.device_manager.comm_socket = ws
+                    print(f"connecting to node server")
                     await ws.send(json.dumps({
-                        "type": "init_conn", "role": "py_server", "hubID": SERVER_ID, "devices": device_manager.list()
-                        }))
+                        "type": "init_conn", 
+                        "role": "py_server", 
+                        "hubID": SERVER_ID, 
+                        "devices": device_manager.list()
+                      }))
 
 
                     async for msg in ws:
-                        await self.handle(msg)
+                        await self._handle(msg)
+
+            except websockets.exceptions.ConnectionClosed as e:
+                print(f"Command socket closed: {e.code} - {e.reason}")
+
             except Exception as e:
                 print(f"Command socket error: {e}")
+
+            finally:
+                print("Cleaning up comm ws connection for node server")
                 self.ws = None
-                await asyncio.sleep(5)
+                self.device_manager.comm_socket = None
+            
+            await asyncio.sleep(5)
 
-    async def broadcast_devices(self, devices_list):
-        if self.ws:
-            await self.ws.send(json.dumps({
-                "type": "sync_data",
-                "devices": devices_list,
-		"hubID": SERVER_ID
-                }))
     
-    async def handle(self, message):
+    async def _handle(self, message):
         msg = json.loads(message)
-
-        if msg["type"] == "laser_cmd":
-            print(msg)
-            device = self.device_manager.get(msg["device"])
-            print(device)
-            if device:
-              if msg["data"] == "off":
-                device["status"] = "off"
-                await device["ws"].send(json.dumps(msg))
-              if msg["data"] == "on":
-                print("executing data on cond")
-                if device["status"] == "on":
-                    print("executing device status on")
+        print(f"message recieved from node server:\n  {msg}")
+        device = self.device_manager.get(msg["target"])
+        if device:
+            if msg["type"] == "laser_cmd":
+                if msg["data"] == device["status"]:
+                    print(f"Laser for device: {device["role"]} already in {msg["data"]} state")
                     await self.ws.send(json.dumps({"type": "confirmation", "data": "fail", "clientID": msg["clientID"]}))
-                else:
-                    print("executing device status off")
-                    device["status"] = "on"
+                else:      
+                    print(f"sending laser cmd of {msg["data"]} to {device["role"]}")
                     await device["ws"].send(json.dumps(msg))
-                    await self.ws.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
-                    
-        if msg["type"] == "servo_cmd":
-            device = self.device_manager.get(msg["target"])
 
-            if device:
+            elif msg["type"] == "servo_cmd":
+                print(f"sending servo cmd data to device: {device["role"]}")
                 await device["ws"].send(json.dumps(msg))
-        
-        elif msg["type"] == "init_stream":
-            await self.stream_manager.start(msg["device"], msg["socket_id"])
+
+            elif msg["type"] == "init_stream":
+                print(f"init stream cmd recieved, passing to stream manager")
+                await self.stream_manager.start(msg["target"], msg["socket_id"])
+        else:
+            print("device not found in device registery")    
 
             
 device_manager = DeviceManager()
@@ -150,19 +162,23 @@ node_connection = NodeConnection(device_manager, stream_manager)
 
 async def listen(websocket):
     print("ESP32 connecting")
+    streamId = None
     try:
-      streamId = None
       await websocket.send(json.dumps({
           "type":"init_conn",
           "role":"py_server"
       }))
       print("init msg sent")
-      async for msg in websocket:
-          print(msg)
-          device_data = json.loads(msg)
+      msg = await websocket.recv()
+      device_data = json.loads(msg)
+      if device_data.get("type") == "init_conn":
+          print("init_conn recieved from ", device_data["role"])
           streamId = str(device_data["streamId"])
           print("Registering: ", device_data["role"], " with streamId: ", streamId)
           await device_manager.register(streamId, device_data["role"], websocket)
+      else:
+          print("first message not 'init_conn'")
+          raise Exception("message recieved not 'init_conn'")
     except websockets.exceptions.ConnectionClosed as e:
         print(f"ESP32 disconnected: {e.code} - {e.reason}")
     except Exception as e:
@@ -183,16 +199,6 @@ async def start_server():
     )
     print(f"WebSocket server listening on {PORT}")
     await server.wait_closed()
-
-
-# def cancel_stream():
-#     global stream_task
-#     if stream_task and not stream_task.done():
-#         stream_task.cancel()
-#     stream_task = None
-
-
-
 
 async def main():
     await asyncio.gather(

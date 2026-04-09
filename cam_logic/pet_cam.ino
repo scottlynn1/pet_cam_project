@@ -55,12 +55,13 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       Serial.println("WebSocket Disconnected!");
       break;
     case WStype_TEXT:
-      StaticJsonDocument<200> doc;
-      deserializeJson(doc, payload, len);
+      StaticJsonDocument<200> request;
+      StaticJsonDocument<128> reply;
+      deserializeJson(request, payload, len);
 
-      if (doc["type"] == "servo_cmd") {
-        float pan = doc["data"]["x"].as<float>() * 90;
-        float tilt = doc["data"]["y"].as<float>() * 45;
+      if (request["type"] == "servo_cmd") {
+        float pan = request["data"]["x"].as<uint8_t>();
+        float tilt = request["data"]["y"].as<uint8_t>();
         Serial.print("Pan: "); 
         Serial.print(pan);
         Serial.print(" | Tilt: "); 
@@ -68,16 +69,15 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         moveServos(pan, tilt);
       }
       
-      if (doc["type"] == "laser_cmd") {
-        Serial.println(doc["data"].as<const char*>());
-        if (doc["data"] == "on") {
+      if (request["type"] == "laser_cmd") {
+        Serial.println(request["data"].as<const char*>());
+        if (request["data"] == "on") {
           digitalWrite(13, HIGH);
-          StaticJsonDocument<128> reply;
           reply["type"] = "status_update";
           reply["role"] = "cam_1";
           reply["status"] = "on";
         }
-        if (doc["data"] == "off") {
+        if (request["data"] == "off") {
           digitalWrite(13, LOW);
           StaticJsonDocument<128> reply;
           reply["type"] = "status_update";
@@ -86,17 +86,17 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         }
       }
 
-      if (doc["type"] == "init_conn") {
+      if (request["type"] == "init_conn") {
         Serial.println("init_conn received from Pi");
         StaticJsonDocument<128> reply;
         reply["type"] = "init_conn";
         reply["role"] = "cam_1";
         reply["streamId"] = 1;
 
-        String out;
-        serializeJson(reply, out);
-        ws.sendTXT(out);
       }
+      String out;
+      serializeJson(reply, out);
+      ws.sendTXT(out);
   }
 }
 
@@ -116,7 +116,7 @@ void setupHttp() {
   server.on("/stream/1", HTTP_GET, [](AsyncWebServerRequest *request) {
 
     streaming = true;
-
+    Serial.println("video stream requested")
     AsyncWebServerResponse *response =
       request->beginChunkedResponse(
         "multipart/x-mixed-replace; boundary=frame",

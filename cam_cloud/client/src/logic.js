@@ -17,7 +17,7 @@ feedstopButton.addEventListener("click", () => {
   laserButton.style.display = "none";
   feedframe.style.display = "none";
   laserstopButton.style.display = "none"
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: streamId, hubID: 123}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", target: streamId, hubID: 123}));
 });
 
 function waitForNextMessage(ws) {
@@ -112,6 +112,8 @@ function sendServoData(x, y) {
   const hasMovedEnough = Math.abs(x - lastSentX) > threshold || Math.abs(y - lastSentY) > threshold;
 
   if (now - lastSendTime > throttleMS && hasMovedEnough) {
+    x = Math.round(x*90)
+    y = Math.round(y*90)
     ws.send(JSON.stringify({ 
       type: "servo_cmd", 
       role: "client", 
@@ -130,8 +132,6 @@ control.addEventListener("touchstart", e => {
   let x = (e.touches[0].clientX - rect.left) / rect.width;
   let y = (e.touches[0].clientY - rect.top) / rect.height;
   sendServoData(x, y);
-  console.log(x);
-  console.log(y);
 })
 
 control.addEventListener("touchmove", e => {
@@ -141,8 +141,6 @@ control.addEventListener("touchmove", e => {
     let x = (touch.clientX - rect.left) / rect.width;
     let y = (touch.clientY - rect.top) / rect.height;
     sendServoData(x, y)
-    console.log(x)
-    console.log(y)
   })
 })
 
@@ -152,6 +150,4 @@ control.addEventListener("touchend", (e) => {
   let x = (e.changedTouches[0].clientX - rect.left) / rect.width;
   let y = (e.changedTouches[0].clientY - rect.top) / rect.height;
   sendServoData(x, y)
-  console.log(x);
-  console.log(y);
 })
