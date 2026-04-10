@@ -1,26 +1,28 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>pet_cam_client</title>
-  </head>
-  <body>
-    <div id="container">
+<body>
+  <div id="container">
+    <div class="top-bar">
       <label for="cameras">Select Camera</label>
       <select name="cameras" id="cam-select">
         <option value="">--Please choose an option--</option>
         <option value="living room">Living Room</option>
         <option value="guest room">Guest Room</option>
       </select>
+
       <button type="button" id="feedstop">Stop Feed</button>
-      <img id="feed" src=""></img>
+    </div>
+
+    <div class="feed-wrapper">
+      <img id="feed" src="" />
+    </div>
+
+    <div class="controls">
       <button type="button" id="laser-button">Activate Laser</button>
       <button type="button" id="laserstop">Deactivate Laser</button>
-      <div id="control"></div>
     </div>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
-</html>
+
+    <div id="control"></div>
+  </div>
+
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>

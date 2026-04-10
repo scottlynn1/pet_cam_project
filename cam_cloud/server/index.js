@@ -262,7 +262,6 @@ app.get("/device_list", (req, res) => {
     if (hubmanager.hubs[hubID]) {
       res.json({ type: 'sync_data', data: hubmanager.hubs[hubID].devices , session: req.sessionID })
     } else {
-      res.json({type: "error", data: `hub ${hubID} is offline`})
       console.log(`hub ${hubID} is offline`)
     }
   } catch (error) {
