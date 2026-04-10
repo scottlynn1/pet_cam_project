@@ -55,8 +55,9 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       Serial.println("WebSocket Disconnected!");
       break;
     case WStype_TEXT:
-      StaticJsonDocument<200> request;
-      StaticJsonDocument<128> reply;
+      StaticJsonDocument<256> request;
+      StaticJsonDocument<256> reply;
+      bool shouldSend = false;
       deserializeJson(request, payload, len);
 
       if (request["type"] == "servo_cmd") {
@@ -76,27 +77,30 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
           reply["type"] = "status_update";
           reply["role"] = "cam_1";
           reply["status"] = "on";
+          shouldSend = true;
         }
         if (request["data"] == "off") {
           digitalWrite(13, LOW);
-          StaticJsonDocument<128> reply;
           reply["type"] = "status_update";
           reply["role"] = "cam_1";
           reply["status"] = "off";
+          shouldSend = true;
         }
       }
 
       if (request["type"] == "init_conn") {
         Serial.println("init_conn received from Pi");
-        StaticJsonDocument<128> reply;
         reply["type"] = "init_conn";
         reply["role"] = "cam_1";
         reply["streamId"] = 1;
-
+          shouldSend = true;
       }
-      String out;
-      serializeJson(reply, out);
-      ws.sendTXT(out);
+      if (shouldSend) {
+        String out;
+        serializeJson(reply, out);
+        ws.sendTXT(out);
+      }
+      break;
   }
 }
 
