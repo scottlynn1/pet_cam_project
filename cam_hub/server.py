@@ -32,8 +32,9 @@ class DeviceManager:
 
         async for msg in websocket:
             msg = json.loads(msg)
+            if msg["type"] != "status_update":
+                return
             self.devices[stream_id]["status"] = msg["status"]
-            # need to check for message type
             if self.comm_socket:
                 await self.comm_socket.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
                 print(f"device status for device: {msg["role"]} change to {msg["status"]}")
