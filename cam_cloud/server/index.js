@@ -100,20 +100,21 @@ class ClientManager {
     
     async start_stream(res, hubID, deviceID, clientID) {
       let stream = `${hubID}/${deviceID}`
-      let timer; // Scope the timer ID so finally can see it
+      let timer;
+      let requestId;
       //checking again if stream initiated by another client to avoid race conditions and duplicate streams
-      if (this.runningstreams[stream]) {
-        this.runningstreams[stream].viewers.add(res);
-        console.log(`client: ${clientID} added to stream: ${deviceID} on hub: ${hubID}`)
-        return; 
-      }
-      if (!this.hubmanager.hubs[hubID]) {
-        throw new Error("HUB_OFFLINE");
-      }        
       try {
+        if (this.runningstreams[stream]) {
+            this.runningstreams[stream].viewers.add(res);
+            console.log(`client: ${clientID} added to stream: ${deviceID} on hub: ${hubID}`)
+            return; 
+        }
+        if (!this.hubmanager.hubs[hubID]) {
+          throw new Error("HUB_OFFLINE");
+        }        
         //set up promise that resolves after message is sent to hub to open up a ws
         const { promise, resolve, reject } = Promise.withResolvers();
-        const requestId = `${clientID}-${Date.now()}`
+        requestId = `${clientID}-${Date.now()}`
         this.pendingstreams[requestId] = resolve
         // time out if ws connection takes too long
         timer = setTimeout(() => {
