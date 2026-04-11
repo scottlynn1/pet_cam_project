@@ -12,38 +12,51 @@ const feedframe = document.getElementById("feed");
 
 feedstopButton.addEventListener("click", () => {
   feedframe.setAttribute("src", "");
-  feedstopButton.style.display = "none";
+  document.getElementById('default-select').selected = true;
   control.style.display = "none";
   laserButton.style.display = "none";
   feedframe.style.display = "none";
-  laserstopButton.style.display = "none"
+  laserstopButton.style.display = "none";
+  feedstopButton.style.display = "none";
   ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: streamId, hubID: 123}));
 });
-
-function waitForNextMessage(ws) {
+// need to add timeout for no response from hub or esp32
+function waitForNextMessage(ws, timeout = 5000) {
   return new Promise ((resolve) => {
+    const timer = setTimeout(() => {
+      ws.removeEventListener("message", handler)
+      reject(new Error("Timeout: No response from device"))
+    }, timeout)
     const handler = (event) => {
-      const data = JSON.parse(event.data)
-      console.log(data)
-      if (data.type == "confirmation") {
-        ws.removeEventListener("message", handler);
-        resolve(data);
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type == "confirmation") {
+          clearTimeout(timer)
+          ws.removeEventListener("message", handler);
+          resolve(data);
+        }
+      } catch (err) {
+        console.error("Error parsing JSON:", err)
       }
     }
-
     ws.addEventListener("message", handler)
   })
 }
 
 laserButton.addEventListener("click", async (e) => {
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
-  const response = await waitForNextMessage(ws);
-  console.log(response)
-  if (response.data == "fail") window.alert("laser already being controlled");
-  else if (response.data == "success") {
-    control.style.display = "block";
-    laserButton.style.display = "none";
-    laserstopButton.style.display = "block";
+  try {
+    const response = await waitForNextMessage(ws);
+    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
+    console.log(response)
+    if (response.data == "fail") window.alert("laser already being controlled");
+    else if (response.data == "success") {
+      control.style.display = "block";
+      laserButton.style.display = "none";
+      laserstopButton.style.display = "block";
+    }
+  } catch (err) {
+    console.error(err);
+    window.alert("Connection error: The device did not respond in time")
   }
 });
 

@@ -109,3 +109,26 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* ===== Desktop ===== */
+@media (min-width: 768px) {
+  #container {
+    align-items: center;
+  }
+
+  #control {
+    max-width: 600px;
+  }
+}
+
+/* ===== Mobile ===== */
+@media (max-width: 480px) {
+  button {
+    width: 100%;
+    font-size: 1.1rem;
+  }
+
+  select {
+    width: 100%;
+  }
+}

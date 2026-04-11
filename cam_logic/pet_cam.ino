@@ -77,6 +77,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
           reply["type"] = "status_update";
           reply["role"] = "cam_1";
           reply["status"] = "on";
+          reply["clientID"] = request["clientID"];
           shouldSend = true;
         }
         if (request["data"] == "off") {
@@ -84,6 +85,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
           reply["type"] = "status_update";
           reply["role"] = "cam_1";
           reply["status"] = "off";
+          reply["clientID"] = request["clientID"];
           shouldSend = true;
         }
       }

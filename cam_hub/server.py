@@ -12,14 +12,15 @@ class DeviceManager:
     def __init__(self):
         self.devices = {}
         self.comm_socket = None
-        self.on_change_callback = None
 
     async def register(self, stream_id, role, websocket):
         print(f"registering device: {role} with stream_id: {stream_id}")
         self.devices[stream_id] = {
             "ws": websocket,
             "role": role,
-            "status": "off"
+            "status": "off",
+            "client_user": None,
+            "pending_connection": False
         }
 
         if self.comm_socket:
@@ -34,10 +35,16 @@ class DeviceManager:
             msg = json.loads(msg)
             if msg["type"] != "status_update":
                 return
-            self.devices[stream_id]["status"] = msg["status"]
+            device = self.devices[stream_id]
+            device["status"] = msg["status"]
+            if msg["status"] == "on":
+                device["client_user"] = msg["clientID"]
+                device["pending_connection"] = False
+            elif msg["status"] == "off":
+                device["client_user"] = None
             if self.comm_socket:
                 await self.comm_socket.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
-                print(f"device status for device: {msg["role"]} change to {msg["status"]}")
+                print(f"device status for device: {msg["role"]} changed to {msg["status"]} by clientID: {msg["clientID"]}")
             else:
                 print("comm_socket closed early")
     
@@ -138,11 +145,13 @@ class NodeConnection:
         device = self.device_manager.get(msg["device"])
         if device:
             if msg["type"] == "laser_cmd":
-                if msg["data"] == device["status"]:
+                if device["pending_connection"] or msg["clientID"] != device["client_user"]:
                     print(f"Laser for device: {device["role"]} already in {msg["data"]} state")
                     await self.ws.send(json.dumps({"type": "confirmation", "data": "fail", "clientID": msg["clientID"]}))
                 else:      
                     print(f"sending laser cmd of {msg["data"]} to {device["role"]}")
+                    if msg["data"] == "on":
+                        device["pending_connection"] = True
                     await device["ws"].send(json.dumps(msg))
 
             elif msg["type"] == "servo_cmd":

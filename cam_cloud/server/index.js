@@ -48,7 +48,6 @@ class ClientManager {
     ws.on("message", (message) => {
       const msg = JSON.parse(message);
       if (msg.type === "servo_cmd" || msg.type == "laser_cmd") {
-
 	      console.log(`Message recieved on client socket with clientID: ${clientID}\n  ${msg}`)
         const pyserver = this.hubmanager.hubs[hubID]?.socket
         if (pyserver) {
@@ -62,6 +61,12 @@ class ClientManager {
       }
     }) 
     ws.on("close", () => {
+      const pyserver = this.hubmanager.hubs[hubID]?.socket
+      // remove client_user from devices associated with hubID
+      if (pyserver) {
+        for (let device of this.hubmanager.hubs[hubID].devices)
+        ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device, hubID: 123, clientID}));
+      }
       delete this.clientsockets[clientID];
       console.log(`client ws connection with client ID: ${clientID}`)
     })
@@ -206,7 +211,11 @@ class HubManager {
         }
       }
       if (msg.type == "confirmation") {
-        this.clientmanager.clientsockets[msg.clientID].send(JSON.stringify( msg ))
+        const clientSocket = this.clientmanager.clientsockets[msg.clientID];
+        // Check if client exists and if socket is open (READYSTATE: 1)
+        if (clientSocket && clientSocket.readyState === WebSocket.OPEN) {
+          clientSocket.send(JSON.stringify(msg));
+        }
       }
 
     })
@@ -264,6 +273,7 @@ app.get("/device_list", (req, res) => {
       res.json({ type: 'sync_data', data: hubmanager.hubs[hubID].devices , session: req.sessionID })
     } else {
       console.log(`hub ${hubID} is offline`)
+      res.json({ type: 'sync_data', data: [], session: req.sessionID})
     }
   } catch (error) {
     console.log(error)
