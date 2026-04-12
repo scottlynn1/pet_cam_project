@@ -22,7 +22,7 @@ feedstopButton.addEventListener("click", () => {
 });
 // need to add timeout for no response from hub or esp32
 function waitForNextMessage(ws, timeout = 5000) {
-  return new Promise ((resolve) => {
+  return new Promise ((resolve, reject) => {
     const timer = setTimeout(() => {
       ws.removeEventListener("message", handler)
       reject(new Error("Timeout: No response from device"))
@@ -59,7 +59,7 @@ laserButton.addEventListener("click", async (e) => {
     window.alert("Connection error: The device did not respond in time")
   }
 });
-
+// maybe add delay here or wait for success confirmation logic before showing activat laser button?
 laserstopButton.addEventListener("click", () => {
   ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: streamId, hubID: 123}));
   control.style.display = "none";

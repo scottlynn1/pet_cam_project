@@ -151,7 +151,6 @@ class ClientManager {
           }
           delete this.runningstreams[stream];
         });
-        // res.on('error', ... )
 
       } catch (err) {
         console.error(`Stream start failed: ${err.message}`);
@@ -212,7 +211,6 @@ class HubManager {
       }
       if (msg.type == "confirmation") {
         const clientSocket = this.clientmanager.clientsockets[msg.clientID];
-        // Check if client exists and if socket is open (READYSTATE: 1)
         if (clientSocket && clientSocket.readyState === WebSocket.OPEN) {
           clientSocket.send(JSON.stringify(msg));
         }

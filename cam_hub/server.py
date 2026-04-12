@@ -2,6 +2,7 @@ import asyncio
 import websockets
 import json
 import aiohttp
+import time
 
 PORT = 5000
 NODE_URL = 'wss://project4.scottlynn.live/ws'
@@ -12,6 +13,7 @@ class DeviceManager:
     def __init__(self):
         self.devices = {}
         self.comm_socket = None
+    
 
     async def register(self, stream_id, role, websocket):
         print(f"registering device: {role} with stream_id: {stream_id}")
@@ -20,8 +22,32 @@ class DeviceManager:
             "role": role,
             "status": "off",
             "client_user": None,
-            "pending_connection": False
+            "pending_connection": False,
+            "last_sent_time": time.time()
         }
+        async def watchdog_loop(device, interval=60.0):
+          while True:
+              await asyncio.sleep(10.0)
+              if device.get("status") == "on":
+                elapsed = time.time() - device["last_sent_time"]
+                
+                if elapsed > interval:
+                    print(f"Safety Trigger! No message sent for {elapsed:.1f}s")
+                    # Send your emergency/backup message
+                    try:
+                      await device["ws"].send(json.dumps(
+                          { "type": "laser_cmd", "role": "hub", "data": "off"}
+                      ))
+                      device["status"] = "off"
+                      # Reset the timer so we don't spam the safety check
+                      device["last_sent_time"] = time.time()
+                    except Exception as e:
+                        print(f"Watchdog failed to send command: {e}")
+                        break
+
+        device = self.devices[stream_id]
+
+        asyncio.create_task(watchdog_loop(device, interval=60.0))
 
         if self.comm_socket:
             print(f"sending device list update for devices: {self.list()}")
@@ -35,7 +61,6 @@ class DeviceManager:
             msg = json.loads(msg)
             if msg["type"] != "status_update":
                 return
-            device = self.devices[stream_id]
             device["status"] = msg["status"]
             if msg["status"] == "on":
                 device["client_user"] = msg["clientID"]
@@ -77,7 +102,7 @@ class StreamManager:
         
         task = asyncio.create_task(self._stream(device_id, socket_id))
         self.active_streams[device_id] = task
-
+    # maybe add better closing logic for ws_stream closed from upstream?
     async def _stream(self, device_id, socket_id):
         ws_stream = None
         try:
@@ -111,6 +136,7 @@ class NodeConnection:
         while True:
             try:
                 async with websockets.connect(uri) as ws:
+                    # maybe add logic here to send off command to all lasers if commands not recieved for more than a period of time ? for all devices in on status
                     self.ws = ws
                     self.device_manager.comm_socket = ws
                     print(f"connecting to node server")
@@ -152,11 +178,17 @@ class NodeConnection:
                     print(f"sending laser cmd of {msg["data"]} to {device["role"]}")
                     if msg["data"] == "on":
                         device["pending_connection"] = True
+                        device["last_send_time"] == time.time()
                     await device["ws"].send(json.dumps(msg))
 
             elif msg["type"] == "servo_cmd":
-                print(f"sending servo cmd data to device: {device["role"]}")
-                await device["ws"].send(json.dumps(msg))
+                if msg["clientID"] == device["client_user"]:
+                  print(f"sending servo cmd data to device: {device["role"]}")
+                  await device["ws"].send(json.dumps(msg))
+                  device["last_sent_time"] = time.time()
+                else:
+                    print("servo cmd failed, device being controlled by another user")
+
 
             elif msg["type"] == "init_stream":
                 print(f"init stream cmd recieved, passing to stream manager")
