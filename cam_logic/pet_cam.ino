@@ -123,6 +123,10 @@ void setupHttp() {
 
     streaming = true;
     Serial.println("video stream requested");
+    request->onDisconnect([]() {
+      streaming = false; 
+      Serial.println("Video stream stopped: Client disconnected");
+    });
     AsyncWebServerResponse *response =
       request->beginChunkedResponse(
         "multipart/x-mixed-replace; boundary=frame",
@@ -173,11 +177,6 @@ void setupHttp() {
           return toCopy;
         }
       );
-    response->onDisconnect([]() {
-      streaming = false; // Stop internal processing
-      Serial.println("Video stream stopped: Client disconnected");
-    });
-
     response->addHeader("Access-Control-Allow-Origin", "*");
     request->send(response);
   });
