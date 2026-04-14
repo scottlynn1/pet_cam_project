@@ -36,7 +36,7 @@ class DeviceManager:
                     # Send your emergency/backup message
                     try:
                       await device["ws"].send(json.dumps(
-                          { "type": "laser_cmd", "role": "hub", "data": "off"}
+                          { "type": "laser_cmd", "role": "hub", "data": "off", "clientID": "pyserver"}
                       ))
                       device["status"] = "off"
                       # Reset the timer so we don't spam the safety check
@@ -64,6 +64,7 @@ class DeviceManager:
             device["status"] = msg["status"]
             if msg["status"] == "on":
                 device["client_user"] = msg["clientID"]
+                device["last_sent_time"] = time.time()
                 device["pending_connection"] = False
             elif msg["status"] == "off":
                 device["client_user"] = None
@@ -171,14 +172,13 @@ class NodeConnection:
         device = self.device_manager.get(msg["device"])
         if device:
             if msg["type"] == "laser_cmd":
-                if device["pending_connection"] or msg["clientID"] != device["client_user"]:
+                if device["pending_connection"] or (device["client_user"] is not None and msg["clientID"] != device["client_user"]):
                     print(f"Laser for device: {device["role"]} already in {msg["data"]} state")
                     await self.ws.send(json.dumps({"type": "confirmation", "data": "fail", "clientID": msg["clientID"]}))
                 else:      
                     print(f"sending laser cmd of {msg["data"]} to {device["role"]}")
                     if msg["data"] == "on":
                         device["pending_connection"] = True
-                        device["last_send_time"] == time.time()
                     await device["ws"].send(json.dumps(msg))
 
             elif msg["type"] == "servo_cmd":

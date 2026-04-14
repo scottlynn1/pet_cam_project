@@ -65,7 +65,7 @@ class ClientManager {
       // remove client_user from devices associated with hubID
       if (pyserver) {
         for (let device of this.hubmanager.hubs[hubID].devices)
-        ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device, hubID: 123, clientID}));
+        pyserver.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device, hubID: 123, clientID}));
       }
       delete this.clientsockets[clientID];
       console.log(`client ws connection with client ID: ${clientID}`)
@@ -189,9 +189,10 @@ class ClientManager {
   
 
 class HubManager {
-  constructor(clientmanager) {
+  constructor(clientmanager = null, streammanager = null) {
     this.hubs = {};
     this.clientmanager = clientmanager;
+    this.streammanager = streammanager;
   }
 
   add_socket(socket, hubID, devices) {
@@ -219,6 +220,22 @@ class HubManager {
     })
     socket.on('close', () => {
       console.log(`unregistering hub: ${hubID}`)
+    // Kill any streams associated with this specific hub
+      for (const streamKey in this.streammanager.runningstreams) {
+        if (streamKey.startsWith(`${hubID}/`)) {
+          const stream = this.streammanager.runningstreams[streamKey];
+          
+          // Close all browser connections for this stream
+          stream.viewers.forEach(res => {
+            if (!res.writableEnded) res.end();
+          });
+
+          // Close the hub-to-node stream socket
+          if (stream.streamSocket.readyState === 1) stream.streamSocket.close();
+          
+          delete this.streammanager.runningstreams[streamKey];
+        }
+      }
 	    delete this.hubs[hubID];
     })
   }
@@ -229,38 +246,39 @@ const clientmanager = new ClientManager(hubmanager);
 const streammanager = new StreamManager(hubmanager);
 
 hubmanager.clientmanager = clientmanager;
+hubmanager.streammanager = streammanager;
 
 wss.on('connection', (ws, req) => {
-  ws.once('message', (message) => {
-    try {
-      const msg = JSON.parse(message);
-      console.log(`Connection initiated with message of type: ${msg.type} recieved`)
-      if (msg.type == "init_conn") {
-        if (msg.role == "py_server") {
-          !Object.hasOwn(hubmanager.hubs, msg.hubID) ? hubmanager.add_socket(ws, msg.hubID, msg.devices) : console.log("hub already connected")
-        } else if (msg.role == "client") {
-          let clientID;
-          sessionParser(req, {}, () => {
-            console.log('Session ID:', req.sessionID);     
-            clientID = req.sessionID
-            if (!req.sessionID) {
-                console.log("No session found for this connection.");
-            }})
-          clientmanager.add_client(ws, msg.hubID, clientID)
-        }
-      } else if (msg.type == "init_stream") {
-        const resolve = streammanager.pendingstreams[msg.socket_id];
-        if (resolve) {
-          resolve(ws);
-        } else {
-          console.error ("No pending stream for", msg.clientID);
-        }
-      } else {
-        console.error("first message on websocket not of type 'init_conn' or 'init_stream'")
-      }
-    } catch (err) {
-      console.error('Failed to parse first message:', err);
+  sessionParser(req, {}, () => {
+    console.log('Session ID:', req.sessionID);     
+    const clientID = req.sessionID
+    if (!req.sessionID) {
+        console.log("No session found for this connection.");
     }
+  ws.once('message', (message) => {
+      try {
+        const msg = JSON.parse(message);
+        console.log(`Connection initiated with message of type: ${msg.type} recieved`)
+        if (msg.type == "init_conn") {
+          if (msg.role == "py_server") {
+            !Object.hasOwn(hubmanager.hubs, msg.hubID) ? hubmanager.add_socket(ws, msg.hubID, msg.devices) : console.log("hub already connected")
+          } else if (msg.role == "client") {
+            clientmanager.add_client(ws, msg.hubID, clientID)
+          }
+        } else if (msg.type == "init_stream") {
+          const resolve = streammanager.pendingstreams[msg.socket_id];
+          if (resolve) {
+            resolve(ws);
+          } else {
+            console.error ("No pending stream for", msg.clientID);
+          }
+        } else {
+          console.error("first message on websocket not of type 'init_conn' or 'init_stream'")
+        }
+      } catch (err) {
+        console.error('Failed to parse first message:', err);
+      }
+    });
   });
 })
 

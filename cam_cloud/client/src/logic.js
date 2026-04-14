@@ -45,8 +45,8 @@ function waitForNextMessage(ws, timeout = 5000) {
 
 laserButton.addEventListener("click", async (e) => {
   try {
-    const response = await waitForNextMessage(ws);
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
+    const response = await waitForNextMessage(ws);
     console.log(response)
     if (response.data == "fail") window.alert("laser already being controlled");
     else if (response.data == "success") {
