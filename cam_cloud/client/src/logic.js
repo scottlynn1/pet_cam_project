@@ -10,6 +10,55 @@ const laserButton = document.getElementById('laser-button');
 const control = document.getElementById("control");
 const feedframe = document.getElementById("feed");
 
+async function getValidToken() {
+  let token = localStorage.getItem('relay_token');
+  
+  if (!token) {
+    const response = await fetch('http://localhost:3000/get-token');
+    const data = await response.json();
+    token = data.token;
+    localStorage.setItem('relay_token', token);
+  }
+  return token;
+}
+
+async function getData() {
+  console.log('fetching...');
+  const token = await getValidToken();
+  const url = import.meta.env.PROD ? `https://${window.location.host}/device_list?hubID=123&token=${token}` : `http://${window.location.hostname}:3000/device_list?hubID=123&token=${token}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Response status: ${response.status}`);
+    }
+    console.log(response)
+    const result = await response.json();
+    console.log(result);
+    let cameralist = document.getElementById("cam-select")
+    cameralist.addEventListener("change", attach)
+    for (let camera of result.data) {
+      let cam = document.createElement("option")
+      cam.value = cam.text = camera
+      cameralist.appendChild(cam)
+    }
+    const urlwithtoken = `${URL}?token=${token}`
+    ws = new WebSocket (urlwithtoken);
+    ws.onopen = () => {
+      console.log("connected to server")
+      ws.send(JSON.stringify({
+        type: "init_conn",
+        role: "client",
+        device: "node_server",
+        hubID: 123
+      }))
+    };
+  } catch (error) {
+    console.error(error.message);
+  }
+}
+
+getData();
+
 feedstopButton.addEventListener("click", () => {
   feedframe.setAttribute("src", "");
   document.getElementById('default-select').selected = true;
@@ -67,52 +116,18 @@ laserstopButton.addEventListener("click", () => {
   laserButton.style.display = "block";
 });
 
-async function getData() {
-  console.log('fetching...');
-  const url = import.meta.env.PROD ? `https://${window.location.host}/device_list?hubID=123` : `http://${window.location.hostname}:3000/device_list?hubID=123`;
-  try {
-    const response = await fetch(url, {
-      credentials: "include"
-    });
-    if (!response.ok) {
-      throw new Error(`Response status: ${response.status}`);
-    }
-    console.log(response)
-    const result = await response.json();
-    console.log(result);
-    let cameralist = document.getElementById("cam-select")
-    cameralist.addEventListener("change", attach)
-    for (let camera of result.data) {
-      let cam = document.createElement("option")
-      cam.value = cam.text = camera
-      cameralist.appendChild(cam)
-    }
-    ws = new WebSocket (URL);
-    ws.onopen = () => {
-      console.log("connected to server")
-      ws.send(JSON.stringify({
-        type: "init_conn",
-        role: "client",
-        device: "node_server",
-        hubID: 123
-      }))
-    };
-  } catch (error) {
-    console.error(error.message);
-  }
-}
 
 const attach = (event) => {
   console.log("event-triggered")
   streamId = event.target.value;
   feedframe.style.display = "block"
   laserButton.style.display = "block"
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?streamId=${streamId}&hubID=123`)
+  let token = localStorage.getItem('relay_token');
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?streamId=${streamId}&hubID=123&token=${token}`)
   feedstopButton.style.display = "block"
 }
 
 
-getData();
 
 let lastSendTime = 0;
 const throttleMS = 50;

@@ -1,5 +1,4 @@
 import express from "express"
-import session from "express-session"
 import dotenv from 'dotenv';
 import http from "http";
 import cors from "cors";
@@ -7,6 +6,9 @@ import { WebSocketServer } from 'ws';
 import fs from'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid'; // npm install uuid
+const JWT_SECRET = process.env.JWT_SECRET || null;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const timeoutBuffer = fs.readFileSync(path.join(__dirname, 'assets/timeout.jpg'));
 const offlineBuffer = fs.readFileSync(path.join(__dirname, 'assets/offline.jpg'));
@@ -27,14 +29,14 @@ app.use(cors({
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// need to change the session architecture to JWT to allow for easier integration of phone app to exist along side web app
-const sessionParser = session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: true,
-  cookie: { secure: !!process.env.SECURE, httpOnly: true }
-});
-app.use(sessionParser);
+const verifyToken = (token) => {
+  return new Promise((resolve, reject) => {
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (err) return reject(err);
+      resolve(decoded);
+    });
+  });
+};
 
 
 class ClientManager {
@@ -43,6 +45,10 @@ class ClientManager {
     this.hubmanager = hubmanager
   }
   add_client(ws, hubID, clientID) {
+    // If this client is already connected, close the old socket first
+    if (this.clientsockets[clientID]) {
+      this.clientsockets[clientID].close();
+    }
     console.log(`adding client:\n  hubID: ${hubID}\n  clientID: ${clientID}`)
     this.clientsockets[clientID] = ws;
     ws.on("message", (message) => {
@@ -248,13 +254,19 @@ const streammanager = new StreamManager(hubmanager);
 hubmanager.clientmanager = clientmanager;
 hubmanager.streammanager = streammanager;
 
-wss.on('connection', (ws, req) => {
-  sessionParser(req, {}, () => {
-    console.log('Session ID:', req.sessionID);     
-    const clientID = req.sessionID
-    if (!req.sessionID) {
-        console.log("No session found for this connection.");
-    }
+
+wss.on('connection', async (ws, req) => {
+  try {
+  const url = new URL(req.url, `https://${req.headers.host}`);
+  const token = url.searchParams.get('token');
+  
+  if (!token) throw new Error("No token provided");
+  
+  // 2. Verify and extract user data
+  const decoded = await verifyToken(token);
+  const clientID = decoded.id; // Or whatever you named the payload field
+  
+  console.log(`Verified JWT connection for client: ${clientID}`);
   ws.once('message', (message) => {
       try {
         const msg = JSON.parse(message);
@@ -279,7 +291,11 @@ wss.on('connection', (ws, req) => {
         console.error('Failed to parse first message:', err);
       }
     });
-  });
+    } catch (err) {
+      console.error('Auth failed:', err.message);
+      ws.send(JSON.stringify({ type: 'error', data: 'Unauthorized' }));
+      ws.close();
+    }
 })
 
 app.get("/device_list", (req, res) => {
@@ -297,26 +313,21 @@ app.get("/device_list", (req, res) => {
   }
 })
 
-const runSession = (req, res) => {
-  return new Promise((resolve, reject) => {
-    sessionParser(req, res, (err) => {
-      if (err) return reject(err);
-      console.log(req.sessionID);
-      resolve(req.sessionID);
-    });
-  });
-};
+
 
 app.get("/stream", async (req, res) => {
-  const deviceID = req.query.streamId;
-  const hubID = req.query.hubID;
+
+  const { hubID, deviceID, token } = req.query;
   let clientID;
   try {
-    clientID = await runSession(req, res);
-    console.log(deviceID, hubID, clientID)
+    // Synchronous or Async verification
+    const decoded = jwt.verify(token, JWT_SECRET);
+    clientID = decoded.userId;
   } catch (err) {
-    console.log(err.message)
+    console.error("Stream Auth Failed:", err.message);
+    res.status(401).end();
   }
+
   res.removeHeader('ETag');
   
   res.writeHead(200, {
@@ -332,6 +343,23 @@ app.get("/stream", async (req, res) => {
   req.on("close", () => {
     streammanager.remove_viewer(res, hubID, deviceID, clientID);
   });
+});
+
+
+app.get("/get-token", (req, res) => {
+  // Generate a unique ID for this guest
+  const guestID = uuidv4(); 
+
+  // Create the payload
+  const payload = { 
+    id: guestID,
+    isGuest: true 
+  };
+
+  // Sign it (maybe set a shorter expiration for guests)
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '12h' });
+
+  res.json({ token, clientID: guestID });
 });
 
 
