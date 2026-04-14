@@ -1,7 +1,7 @@
 const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
 const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : `${protocol}://${window.location.hostname}:3000`
 
-let streamId;
+let deviceID;
 let ws;
 const container = document.getElementById("container");
 const feedstopButton = document.getElementById("feedstop");
@@ -14,7 +14,8 @@ async function getValidToken() {
   let token = localStorage.getItem('relay_token');
   
   if (!token) {
-    const response = await fetch('http://localhost:3000/get-token');
+    const response = await fetch(`https://${window.location.host}/get-token`);
+    console.log(response);
     const data = await response.json();
     token = data.token;
     localStorage.setItem('relay_token', token);
@@ -51,6 +52,11 @@ async function getData() {
         device: "node_server",
         hubID: 123
       }))
+      setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 30000);
     };
   } catch (error) {
     console.error(error.message);
@@ -67,9 +73,9 @@ feedstopButton.addEventListener("click", () => {
   feedframe.style.display = "none";
   laserstopButton.style.display = "none";
   feedstopButton.style.display = "none";
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: streamId, hubID: 123}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
 });
-// need to add timeout for no response from hub or esp32
+
 function waitForNextMessage(ws, timeout = 5000) {
   return new Promise ((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -94,7 +100,7 @@ function waitForNextMessage(ws, timeout = 5000) {
 
 laserButton.addEventListener("click", async (e) => {
   try {
-    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: streamId, hubID: 123}));
+    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: deviceID, hubID: 123}));
     const response = await waitForNextMessage(ws);
     console.log(response)
     if (response.data == "fail") window.alert("laser already being controlled");
@@ -110,7 +116,7 @@ laserButton.addEventListener("click", async (e) => {
 });
 // maybe add delay here or wait for success confirmation logic before showing activat laser button?
 laserstopButton.addEventListener("click", () => {
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: streamId, hubID: 123}));
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   control.style.display = "none";
   laserstopButton.style.display = "none";
   laserButton.style.display = "block";
@@ -119,11 +125,11 @@ laserstopButton.addEventListener("click", () => {
 
 const attach = (event) => {
   console.log("event-triggered")
-  streamId = event.target.value;
+  deviceID = event.target.value;
   feedframe.style.display = "block"
   laserButton.style.display = "block"
   let token = localStorage.getItem('relay_token');
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?streamId=${streamId}&hubID=123&token=${token}`)
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&hubID=123&token=${token}`)
   feedstopButton.style.display = "block"
 }
 
@@ -146,7 +152,7 @@ function sendServoData(x, y) {
       type: "servo_cmd", 
       role: "client", 
       data: { x, y }, 
-      device: streamId
+      device: deviceID
     }))
     lastSentX = x;
     lastSentY = y;

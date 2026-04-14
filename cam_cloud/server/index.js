@@ -8,7 +8,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid'; // npm install uuid
-const JWT_SECRET = process.env.JWT_SECRET || null;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const timeoutBuffer = fs.readFileSync(path.join(__dirname, 'assets/timeout.jpg'));
 const offlineBuffer = fs.readFileSync(path.join(__dirname, 'assets/offline.jpg'));
@@ -19,13 +18,16 @@ dotenv.config({
   path: `.env.${env}`,
 });
 const PORT = parseInt(process.env.PORT);
+const JWT_SECRET = process.env.JWT_SECRET || null;
 
 // initialize express app, ws server, and middleware
 const app = express();
 app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
+  origin: 'http://localhost:5173', // Your frontend
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+app.options('*', cors());
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
@@ -38,6 +40,21 @@ const verifyToken = (token) => {
   });
 };
 
+app.get("/get-token", (req, res) => {
+  // Generate a unique ID for this guest
+  const guestID = uuidv4(); 
+
+  // Create the payload
+  const payload = { 
+    id: guestID,
+    isGuest: true 
+  };
+
+  // Sign it (maybe set a shorter expiration for guests)
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '12h' });
+
+  res.json({ token, clientID: guestID });
+});
 
 class ClientManager {
   constructor(hubmanager) {
@@ -45,10 +62,10 @@ class ClientManager {
     this.hubmanager = hubmanager
   }
   add_client(ws, hubID, clientID) {
-    // If this client is already connected, close the old socket first
-    if (this.clientsockets[clientID]) {
-      this.clientsockets[clientID].close();
-    }
+    // // If this client is already connected, close the old socket first
+    // if (this.clientsockets[clientID]) {
+    //   this.clientsockets[clientID].close();
+    // }
     console.log(`adding client:\n  hubID: ${hubID}\n  clientID: ${clientID}`)
     this.clientsockets[clientID] = ws;
     ws.on("message", (message) => {
@@ -70,8 +87,10 @@ class ClientManager {
       const pyserver = this.hubmanager.hubs[hubID]?.socket
       // remove client_user from devices associated with hubID
       if (pyserver) {
-        for (let device of this.hubmanager.hubs[hubID].devices)
-        pyserver.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device, hubID: 123, clientID}));
+        for (let device of this.hubmanager.hubs[hubID].devices) {
+          pyserver.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device, hubID: 123, clientID}));
+          console.log("laser off sent from cloud backend")
+        }
       }
       delete this.clientsockets[clientID];
       console.log(`client ws connection with client ID: ${clientID}`)
@@ -256,26 +275,31 @@ hubmanager.streammanager = streammanager;
 
 
 wss.on('connection', async (ws, req) => {
-  try {
-  const url = new URL(req.url, `https://${req.headers.host}`);
-  const token = url.searchParams.get('token');
-  
-  if (!token) throw new Error("No token provided");
-  
-  // 2. Verify and extract user data
-  const decoded = await verifyToken(token);
-  const clientID = decoded.id; // Or whatever you named the payload field
-  
-  console.log(`Verified JWT connection for client: ${clientID}`);
-  ws.once('message', (message) => {
-      try {
-        const msg = JSON.parse(message);
-        console.log(`Connection initiated with message of type: ${msg.type} recieved`)
-        if (msg.type == "init_conn") {
-          if (msg.role == "py_server") {
-            !Object.hasOwn(hubmanager.hubs, msg.hubID) ? hubmanager.add_socket(ws, msg.hubID, msg.devices) : console.log("hub already connected")
-          } else if (msg.role == "client") {
+  ws.once('message', async (message) => {
+    try {
+      const msg = JSON.parse(message);
+      console.log(`Connection initiated with message of type: ${msg.type} recieved`)
+      if (msg.type == "init_conn") {
+        if (msg.role == "py_server") {
+          !Object.hasOwn(hubmanager.hubs, msg.hubID) ? hubmanager.add_socket(ws, msg.hubID, msg.devices) : console.log("hub already connected")
+        } else if (msg.role == "client") {
+          try {
+            const url = new URL(req.url, `https://${req.headers.host}`);
+            const token = url.searchParams.get('token');
+            
+            if (!token) throw new Error("No token provided");
+            const decoded = await verifyToken(token);
+            const clientID = decoded.id; // Or whatever you named the payload field
+            
+            console.log(`Verified JWT connection for client: ${clientID}`);
             clientmanager.add_client(ws, msg.hubID, clientID)
+          } catch (err) {
+            console.error('Auth failed:', err.message);
+            ws.send(JSON.stringify({ type: 'error', data: 'Unauthorized' }));
+            ws.close();
+            return
+          }
+            
           }
         } else if (msg.type == "init_stream") {
           const resolve = streammanager.pendingstreams[msg.socket_id];
@@ -291,11 +315,6 @@ wss.on('connection', async (ws, req) => {
         console.error('Failed to parse first message:', err);
       }
     });
-    } catch (err) {
-      console.error('Auth failed:', err.message);
-      ws.send(JSON.stringify({ type: 'error', data: 'Unauthorized' }));
-      ws.close();
-    }
 })
 
 app.get("/device_list", (req, res) => {
@@ -322,7 +341,7 @@ app.get("/stream", async (req, res) => {
   try {
     // Synchronous or Async verification
     const decoded = jwt.verify(token, JWT_SECRET);
-    clientID = decoded.userId;
+    clientID = decoded.id;
   } catch (err) {
     console.error("Stream Auth Failed:", err.message);
     res.status(401).end();
@@ -346,21 +365,6 @@ app.get("/stream", async (req, res) => {
 });
 
 
-app.get("/get-token", (req, res) => {
-  // Generate a unique ID for this guest
-  const guestID = uuidv4(); 
-
-  // Create the payload
-  const payload = { 
-    id: guestID,
-    isGuest: true 
-  };
-
-  // Sign it (maybe set a shorter expiration for guests)
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '12h' });
-
-  res.json({ token, clientID: guestID });
-});
 
 
 
