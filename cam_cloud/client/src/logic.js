@@ -8,7 +8,6 @@ const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : 
 
 let deviceID;
 let ws;
-const container = document.getElementById("container");
 const feedstopButton = document.getElementById("feedstop");
 const laserstopButton = document.getElementById("laserstop");
 const laserButton = document.getElementById('laser-button');
@@ -26,6 +25,11 @@ async function getValidToken() {
     localStorage.setItem('relay_token', token);
   }
   return token;
+}
+
+function UpdateUI(event) {
+  const message = event.data;
+  console.log(message);
 }
 
 async function getData() {
@@ -63,6 +67,7 @@ async function getData() {
         }
       }, 30000);
     };
+    ws.addEventListener('message', UpdateUI);
   } catch (error) {
     console.error(error.message);
   }
