@@ -24,25 +24,28 @@ class DeviceManager:
             self.watchdog_task = None
 
     async def watchdog_loop(self, interval=60.0):
-        while True:
-            await asyncio.sleep(30.0)
-            if not self.values():
-                break
-            for device in self.devices.values():
-                elapsed = time.time() - device["last_sent_time"]
-                if device.get("status") == "on" and elapsed > interval:
-                    print(f"Safety Trigger! No message sent for {elapsed:.1f}s")
-                    try:
-                        await device["ws"].send(json.dumps(
-                            { "type": "laser_cmd", "role": "hub", "data": "off", "clientID": "pyserver"}
-                        ))
-                        device["status"] = "off"
-                        # Reset the timer so we don't spam the safety check
-                        device["last_sent_time"] = time.time()
-                    except Exception as e:
-                        print(f"Watchdog failed to send command: {e}")
-                        break
-
+        try:
+            while True:
+                await asyncio.sleep(30.0)
+                if not self.devices:
+                    break
+                for device in list(self.devices.values()):
+                    elapsed = time.time() - device["last_sent_time"]
+                    if device.get("status") == "on" and elapsed > interval:
+                        print(f"Safety Trigger! No message sent for {elapsed:.1f}s")
+                        try:
+                            await device["ws"].send(json.dumps(
+                                { "type": "laser_cmd", "role": "hub", "data": "off", "clientID": "pyserver"}
+                            ))
+                            device["status"] = "off"
+                            # Reset the timer so we don't spam the safety check
+                            device["last_sent_time"] = time.time()
+                        except Exception as e:
+                            print(f"Watchdog failed to send command: {e}")
+                            break
+        finally:
+            self.watchdog_task = None
+            
     async def register(self, stream_id, role, websocket):
         print(f"registering device: {role} with stream_id: {stream_id}")
         self.devices[stream_id] = {
@@ -57,8 +60,6 @@ class DeviceManager:
         self.start_watchdog()
 
         device = self.devices[stream_id]
-
-        asyncio.create_task(watchdog_loop(device, interval=60.0))
 
         if self.comm_socket:
             print(f"sending device list update for devices: {self.list()}")
