@@ -27,7 +27,6 @@ app.use(cors({
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.options('*', cors());
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
