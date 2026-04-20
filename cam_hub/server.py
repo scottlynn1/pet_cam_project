@@ -76,6 +76,7 @@ class DeviceManager:
 
         async for msg in websocket:
             msg = json.loads(msg)
+            client = device["client_user"]
             if msg["type"] != "status_update":
                 return
             device["status"] = msg["status"]
@@ -86,7 +87,10 @@ class DeviceManager:
             elif msg["status"] == "off":
                 device["client_user"] = None
             if self.comm_socket:
-                await self.comm_socket.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
+                if msg["clientID"] == "pyserver":
+                    await self.comm_socket.send(json.dumps({"type": "confirmation", "data": "timeout", "clientID": client}))
+                else:
+                    await self.comm_socket.send(json.dumps({"type": "confirmation", "data": "success", "clientID": msg["clientID"]}))
                 print(f"device status for device: {msg["role"]} changed to {msg["status"]} by clientID: {msg["clientID"]}")
             else:
                 print("comm_socket closed early")

@@ -235,6 +235,7 @@ class HubManager {
         }
       }
       if (msg.type == "confirmation") {
+        console.log(msg.clientID)
         const clientSocket = this.clientmanager.clientsockets[msg.clientID];
         if (clientSocket && clientSocket.readyState === WebSocket.OPEN) {
           clientSocket.send(JSON.stringify(msg));
