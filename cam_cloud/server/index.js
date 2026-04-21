@@ -167,22 +167,25 @@ class ClientManager {
           }
         });
         // close stream for all clients on close initiated from hub
-        ws.on("close", () => {
+        ws.on("close", async () => {
           let clients = this.runningstreams[stream]?.viewers || [];
           for (let client of clients) { 
+            await this.sendErrorFrame(client, errorBuffer)
             if (client.writableEnded) return; 
             client.end();
           }
+          console.log(`removing stream: ${stream} from running streams`)
           delete this.runningstreams[stream];
+          console.log(`ws pipe closed by hub: ${hubID}`)
         });
 
       } catch (err) {
-        console.error(`Stream start failed: ${err.message}`);
         
         // Determine which image to send
         let img = errorBuffer;
         if (err.message === "HUB_TIMEOUT") img = timeoutBuffer;
         if (err.message === "HUB_OFFLINE") img = offlineBuffer;
+        console.error(`Stream error: ${err.message}`);
         
         await this.sendErrorFrame(res, img);
       } finally {

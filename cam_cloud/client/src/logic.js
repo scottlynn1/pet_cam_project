@@ -28,8 +28,13 @@ async function getValidToken() {
 }
 
 function UpdateUI(event) {
-  const message = event.data;
-  console.log(message);
+  const message = JSON.parse(event.data);
+  if (message.type == "confirmation" && message.data == "timeout") {
+    control.style.display = "none";
+    laserstopButton.style.display = "none";
+    laserButton.style.display = "block";
+  }
+
 }
 
 async function getData() {
