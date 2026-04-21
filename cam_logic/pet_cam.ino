@@ -32,7 +32,7 @@ camera_config_t camera_config = {
   .pixel_format = PIXFORMAT_JPEG,
   .frame_size = FRAMESIZE_QVGA,  // 320x240, low RAM for ESP32
   .jpeg_quality = 10,
-  .fb_count = 1
+  .fb_count = 2
 };
 void moveServos(float pan, float tilt);
 void startStream();
@@ -131,50 +131,67 @@ void setupHttp() {
       request->beginChunkedResponse(
         "multipart/x-mixed-replace; boundary=frame",
         [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
-
+          if (maxLen == 0) return 0;
           static camera_fb_t *fb = nullptr;
           static size_t sent = 0;
-          static String header;
+          static char header[128];
+          static const char* footer = "\r\n";
 
-          if (!streaming) return 0;
-
+          if (!streaming && fb) {
+            esp_camera_fb_return(fb);
+            fb = nullptr;
+            sent = 0;
+            return 0;
+          }
+          
           if (!fb) {
             fb = esp_camera_fb_get();
             if (!fb) {
-              Serial.println("frame capture failed, stream stoped");
+              Serial.println("frame capture failed, stream stopped");
               return 0;
             }
 
-            header =
-              "--frame\r\n"
-              "Content-Type: image/jpeg\r\n"
-              "Content-Length: " + String(fb->len) + "\r\n\r\n";
+            snprintf(header, sizeof(header),
+              "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+              fb->len
+            );
 
             sent = 0;
           }
 
-          if (sent < header.length()) {
-            size_t hlen = header.length() - sent;
-            size_t toCopy = min(hlen, maxLen);
-            memcpy(buffer, header.c_str() + sent, toCopy);
+          size_t header_len = strlen(header);
+          size_t footer_len = 2;
+          size_t total_len = header_len + fb->len + footer_len;
+
+          if (sent < header_len) {
+            size_t toCopy = min(header_len - sent, maxLen);
+            memcpy(buffer, header + sent, toCopy);
             sent += toCopy;
             return toCopy;
           }
 
-          size_t imgOffset = sent - header.length();
-          size_t remaining = fb->len - imgOffset;
-          size_t toCopy = min(remaining, maxLen);
-
-          memcpy(buffer, fb->buf + imgOffset, toCopy);
-          sent += toCopy;
-
-          if (sent >= header.length() + fb->len) {
-            esp_camera_fb_return(fb);
-            fb = nullptr;
-            sent = 0;
+          if (sent < header_len + fb->len) {
+            size_t imgOffset = sent - header_len;
+            size_t toCopy = min(fb->len - imgOffset, maxLen);
+            memcpy(buffer, fb->buf + imgOffset, toCopy);
+            sent += toCopy;
+            return toCopy;
           }
 
-          return toCopy;
+          if (sent < total_len) {
+            size_t footerOffset = sent - (header_len + fb->len);
+            size_t toCopy = min(footer_len - footerOffset, maxLen);
+            memcpy(buffer, footer + footerOffset, toCopy);
+            sent += toCopy;
+            return toCopy;
+          }
+
+          // Frame fully sent
+          esp_camera_fb_return(fb);
+          fb = nullptr;
+          sent = 0;
+
+          return 0;
         }
       );
     response->addHeader("Access-Control-Allow-Origin", "*");
