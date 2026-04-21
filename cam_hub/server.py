@@ -3,6 +3,7 @@ import websockets
 import json
 import aiohttp
 import time
+import logging
 
 PORT = 5000
 NODE_URL = 'wss://project4.scottlynn.live/ws'
@@ -136,20 +137,37 @@ class StreamManager:
     # maybe add better closing logic for ws_stream closed from upstream?
     async def _stream(self, device_id, socket_id):
         ws_stream = None
-        session = await self.get_session() # Use the SHARED session
         try:
-            ws_stream = await websockets.connect(NODE_URL)
+          session = await self.get_session() # Use the SHARED session
+          ws_stream = await websockets.connect(NODE_URL)
+          await ws_stream.send(json.dumps({
+              "type": "init_stream", 
+              "role": "py_server", 
+              "hubID": SERVER_ID, 
+              "device": device_id, 
+              "socket_id": socket_id
+              }))
+          while True:
+            try:
 
-            await ws_stream.send(json.dumps({
-                "type": "init_stream", "role": "py_server", "hubID": SERVER_ID, "device": device_id, "socket_id": socket_id
-                }))
-            print(f"starting ws video stream for device: {device_id}")
-            async with session.get(f"{CAM_URL}{device_id}") as resp:
-                async for chunk in resp.content.iter_chunked(4096):
-                    await ws_stream.send(chunk)
+              async with session.get(f"{CAM_URL}{device_id}") as resp:
+                  if resp.status != 200:
+                      logging.warning("Bad response: %s", resp.status)
+                      await asyncio.sleep(1)
+                      continue
+                  
+                  try:
+                    async for chunk in resp.content.iter_chunked(4096):
+                            await ws_stream.send(chunk)
+                  except websockets.exceptions.ConnectionClosed:
+                      logging.warning("WS closed, reconnecting... break")
+                      break
 
+            except Exception as e:
+                logging.error("Stream socket error: %s", e, exc_info=True)
+                await asyncio.sleep(1)
         except Exception as e:
-            print(f"Stream socket error: {e}")
+            logging.error("stream socket connection error: %s", e)
         finally:
             if ws_stream:
                 print(f"closing and removing stream from active streams for device: {device_id}")
