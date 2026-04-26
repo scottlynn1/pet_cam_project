@@ -9,9 +9,10 @@ const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : 
 let deviceID;
 let ws;
 const feedstopButton = document.getElementById("feedstop");
-const laserstopButton = document.getElementById("laserstop");
-const laserButton = document.getElementById('laser-button');
-const control = document.getElementById("control");
+const laserstopButton = document.getElementById("laser-stop");
+const laserstartButton = document.getElementById('laser-start');
+const controller = document.getElementById("controller");
+const feedsection = document.getElementById("feed-section");
 const feedframe = document.getElementById("feed");
 
 async function getValidToken() {
@@ -30,9 +31,9 @@ async function getValidToken() {
 function UpdateUI(event) {
   const message = JSON.parse(event.data);
   if (message.type == "confirmation" && message.data == "timeout") {
-    control.style.display = "none";
-    laserstopButton.style.display = "none";
-    laserButton.style.display = "block";
+    controller.classList.add('hidden')
+    laserstartButton.classList.remove('hidden');
+    laserwrapper.classList.remove('hidden');
   }
 
 }
@@ -82,14 +83,19 @@ getData();
 
 feedstopButton.addEventListener("click", () => {
   feedframe.setAttribute("src", "");
+  feedframe.classList.remove('active');
   document.getElementById('default-select').selected = true;
-  control.style.display = "none";
-  laserButton.style.display = "none";
-  feedframe.style.display = "none";
-  laserstopButton.style.display = "none";
-  feedstopButton.style.display = "none";
+  controller.classList.add('hidden');
+  laserstartButton.classList.add('hidden');
+  laserwrapper.classList.add('hidden');
+  feedsection.classList.add('hidden');
   ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
 });
+feedframe.onload = () => {
+  setTimeout(() => {
+    feedframe.classList.add('active');
+  }, 300); // small intentional delay
+};
 
 function waitForNextMessage(ws, timeout = 5000) {
   return new Promise ((resolve, reject) => {
@@ -113,16 +119,16 @@ function waitForNextMessage(ws, timeout = 5000) {
   })
 }
 
-laserButton.addEventListener("click", async (e) => {
+laserstartButton.addEventListener("click", async (e) => {
   try {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: deviceID, hubID: 123}));
     const response = await waitForNextMessage(ws);
     console.log(response)
-    if (response.data == "fail") window.alert("laser already being controlled");
+    if (response.data == "fail") window.alert("laser already being controllerled");
     else if (response.data == "success") {
-      control.style.display = "block";
-      laserButton.style.display = "none";
-      laserstopButton.style.display = "block";
+      laserstartButton.classList.add('hidden');
+      laserwrapper.classList.add('hidden');
+      controller.classList.remove('hidden');
     }
   } catch (err) {
     console.error(err);
@@ -132,20 +138,26 @@ laserButton.addEventListener("click", async (e) => {
 // maybe add delay here or wait for success confirmation logic before showing activat laser button?
 laserstopButton.addEventListener("click", () => {
   ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  control.style.display = "none";
-  laserstopButton.style.display = "none";
-  laserButton.style.display = "block";
+  controller.classList.add('hidden');
+  laserstartButton.classList.remove('hidden');
+  laserwrapper.classList.remove('hidden');
 });
 
 
 const attach = (event) => {
-  console.log("event-triggered")
+  console.log("event-triggered");
   deviceID = event.target.value;
-  feedframe.style.display = "block"
-  laserButton.style.display = "block"
+  feedsection.classList.remove('hidden');
+  controller.classList.add('hidden');
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   let token = localStorage.getItem('relay_token');
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&hubID=123&token=${token}`)
-  feedstopButton.style.display = "block"
+  feedframe.classList.remove('active');
+  laserstartButton.classList.remove('hidden');
+  laserwrapper.classList.remove('hidden');
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&hubID=123&token=${token}`);
+  // setTimeout(() => {
+  //   feedframe.classList.add('active');
+  // }, 500);
 }
 
 
@@ -175,17 +187,17 @@ function sendServoData(x, y) {
   }
 }
 
-control.addEventListener("touchstart", e => {
+controller.addEventListener("touchstart", e => {
   e.preventDefault();
-  let rect = control.getBoundingClientRect();
+  let rect = controller.getBoundingClientRect();
   let x = (e.touches[0].clientX - rect.left) / rect.width;
   let y = (e.touches[0].clientY - rect.top) / rect.height;
   sendServoData(x, y);
 })
 
-control.addEventListener("touchmove", e => {
+controller.addEventListener("touchmove", e => {
   e.preventDefault();
-  let rect = control.getBoundingClientRect();
+  let rect = controller.getBoundingClientRect();
   [...e.touches].forEach(touch => {
     let x = (touch.clientX - rect.left) / rect.width;
     let y = (touch.clientY - rect.top) / rect.height;
@@ -193,9 +205,9 @@ control.addEventListener("touchmove", e => {
   })
 })
 
-control.addEventListener("touchend", (e) => {
+controller.addEventListener("touchend", (e) => {
   e.preventDefault();
-  let rect = control.getBoundingClientRect();
+  let rect = controller.getBoundingClientRect();
   let x = (e.changedTouches[0].clientX - rect.left) / rect.width;
   let y = (e.changedTouches[0].clientY - rect.top) / rect.height;
   sendServoData(x, y)

@@ -7,20 +7,30 @@
     <title>pet_cam_client</title>
   </head>
   <body>
-    <div id="container">
-      <label for="cameras">Select Camera</label>
-      <select name="cameras" id="cam-select">
-        <option value="" disabled selected hidden id="default-select">--Please choose an option--</option>
-        <option value="living room">Living Room</option>
-        <option value="guest room">Guest Room</option>
-      </select>
-      <button type="button" id="feedstop">Stop Feed</button>
-      <img id="feed" src=""></img>
-      <button type="button" id="laser-button">Activate Laser</button>
-      <button type="button" id="laserstop">Deactivate Laser</button>
-      <div id="control"></div>
+    <div id="container" class="container">
+      <div class="top-bar">
+        <label for="cam-select" class="visually-hidden">Camera</label>
+        <select id="cam-select">
+          <option value="" disabled selected hidden>--Choose Camera--</option>
+          <option value="living room">Living Room</option>
+          <option value="guest room">Guest Room</option>
+        </select>
+      </div>
+
+      <div id="feed-section" class="feedsection hidden">
+        <img id="feed" src="" class="feed"/>
+        <button id="feedstop" class="feedstop">X</button>
+      </div>
+
+      <div class="controlsection">
+        <div class="laserwrapper hidden">
+          <button id="laser-start" class="laserstart hidden">Activate Laser</button>
+        </div>
+        <div id="controller" class="controller hidden">
+          <button id="laser-stop" class="laserstop">X</button>
+        </div>
+      </div>
     </div>
-    <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
