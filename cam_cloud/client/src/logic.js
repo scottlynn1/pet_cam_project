@@ -90,6 +90,20 @@ feedstopButton.addEventListener("click", () => {
   feedsection.classList.add('hidden');
   ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
 });
+laserstopButton.addEventListener("click", () => {
+  console.log('Laser stop button clicked on click event');
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+  controller.classList.add('hidden');
+  laserstartButton.classList.remove('hidden');
+  laserwrapper.classList.remove('hidden');
+});
+laserstopButton.addEventListener("touchend", () => {
+  console.log('Laser stop button clicked on touchend event');
+  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+  controller.classList.add('hidden');
+  laserstartButton.classList.remove('hidden');
+  laserwrapper.classList.remove('hidden');
+});
 feedframe.onload = () => {
   setTimeout(() => {
     feedframe.classList.add('active');
@@ -136,6 +150,7 @@ laserstartButton.addEventListener("click", async (e) => {
 });
 // maybe add delay here or wait for success confirmation logic before showing activat laser button?
 laserstopButton.addEventListener("click", () => {
+  e.stopPropagation();
   ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   controller.classList.add('hidden');
   laserstartButton.classList.remove('hidden');
@@ -211,3 +226,5 @@ controller.addEventListener("touchend", (e) => {
   let y = (e.changedTouches[0].clientY - rect.top) / rect.height;
   sendServoData(x, y)
 })
+
+
