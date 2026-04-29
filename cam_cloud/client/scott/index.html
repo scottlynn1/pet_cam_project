@@ -5,13 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>pet_cam_client</title>
+    <script type="module" crossorigin src="/assets/index-CfqPamcR.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DNlMx8J2.css">
   </head>
   <body>
     <div id="container" class="container">
       <div class="top-bar">
         <label for="cam-select" class="visually-hidden">Camera</label>
         <select id="cam-select">
-          <option id="default-select" value="" disabled selected hidden>--Choose Camera--</option>
+          <option value="" disabled selected hidden>--Choose Camera--</option>
           <option value="living room">Living Room</option>
           <option value="guest room">Guest Room</option>
         </select>
@@ -19,11 +21,11 @@
 
       <div id="feed-section" class="feedsection hidden">
         <img id="feed" src="" class="feed"/>
-        <button id="feed-stop" class="feedstop">X</button>
+        <button id="feedstop" class="feedstop">X</button>
       </div>
 
       <div class="controlsection">
-        <div id="laser-wrapper" class="laserwrapper hidden">
+        <div class="laserwrapper hidden">
           <button id="laser-start" class="laserstart hidden">Activate Laser</button>
         </div>
         <div id="controller" class="controller hidden">
@@ -31,6 +33,5 @@
         </div>
       </div>
     </div>
-    <script type="module" src="/src/main.js"></script>
   </body>
 </html>

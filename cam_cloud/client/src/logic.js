@@ -1,16 +1,15 @@
 const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
 const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : `${protocol}://${window.location.hostname}:3000`
 
-//need to add logic to reflect disconnected streams from either frontend, backend or device and switching off of laser and removal of user from device.
-//need to refresh expired jwt's and more secure storage on frontend
+//need to add logic to reflect disconnected streams from either frontend or backend
 //need to impliment login with rate limiting and 2fa
-//need to clean up disconnection logic
 
 let deviceID;
 let ws;
-const feedstopButton = document.getElementById("feedstop");
+const feedstopButton = document.getElementById("feed-stop");
 const laserstopButton = document.getElementById("laser-stop");
 const laserstartButton = document.getElementById('laser-start');
+const laserwrapper = document.getElementById('laser-wrapper');
 const controller = document.getElementById("controller");
 const feedsection = document.getElementById("feed-section");
 const feedframe = document.getElementById("feed");

@@ -367,8 +367,4 @@ app.get("/stream", async (req, res) => {
   });
 });
 
-
-
-
-
 server.listen(PORT, () => console.log(`Cloud relay running on port:${PORT}`));
