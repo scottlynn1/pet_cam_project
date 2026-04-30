@@ -158,7 +158,17 @@ class StreamManager:
                   
                   try:
                     async for chunk in resp.content.iter_chunked(4096):
-                            await ws_stream.send(chunk)
+                        start = time.time()
+                        await ws_stream.send(chunk)
+                        elapsed = time.time() - start
+
+                        if elapsed > 0.02:
+                            logging.warning(f"WS slow send: {elapsed:.3f}s")
+
+                        if ws_stream.transport:
+                            buf = ws_stream.transport.get_write_buffer_size()
+                            if buf > 1024 * 1024:
+                                logging.warning(f"WS buffer high: {buf}")
                   except websockets.exceptions.ConnectionClosed:
                       logging.warning("WS closed, reconnecting... break")
                       break

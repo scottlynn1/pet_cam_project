@@ -163,12 +163,26 @@ class ClientManager {
               clients.delete(client);
               continue;
             }
-            client.write(message);
+
+            if (client.isBackedUp) {
+              continue; // skip sending completely
+            }
+
+            const ok = client.write(message);
+
+            if (!ok) {
+              client.isBackedUp = true;
+              console.log("Backpressure detected, purging buffer")
+              client.once("drain", () => {
+                client.isBackedUp = false;
+                console.log("client recovered");
+              });
+            }
           }
         });
         // close stream for all clients on close initiated from hub
         ws.on("close", async () => {
-          let clients = this.runningstreams[stream]?.viewers || [];
+          let clients = this.runningstreams[stream]?.viewers || new Set();
           for (let client of clients) { 
             await this.sendErrorFrame(client, errorBuffer)
             if (client.writableEnded) return; 
