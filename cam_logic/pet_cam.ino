@@ -131,16 +131,14 @@ void setupHttp() {
       request->beginChunkedResponse(
         "multipart/x-mixed-replace; boundary=frame",
         [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
-          if (maxLen == 0) return 0;
           static camera_fb_t *fb = nullptr;
           static size_t sent = 0;
           static char header[128];
           static const char* footer = "\r\n";
 
-          if (!streaming && fb) {
-            esp_camera_fb_return(fb);
+          if (!streaming) {
+            if (fb) esp_camera_fb_return(fb);
             fb = nullptr;
-            sent = 0;
             return 0;
           }
           
@@ -163,37 +161,39 @@ void setupHttp() {
           size_t footer_len = 2;
           size_t total_len = header_len + fb->len + footer_len;
 
-          if (sent < header_len) {
-            size_t toCopy = min(header_len - sent, maxLen);
-            memcpy(buffer, header + sent, toCopy);
-            sent += toCopy;
-            return toCopy;
-          }
+          size_t remaining = total_len - sent;
+          size_t canSend = min(remaining, maxLen);
 
-          if (sent < header_len + fb->len) {
-            size_t imgOffset = sent - header_len;
-            size_t toCopy = min(fb->len - imgOffset, maxLen);
-            memcpy(buffer, fb->buf + imgOffset, toCopy);
-            sent += toCopy;
-            return toCopy;
-          }
+          if (canSend > 0) {
+            if (sent < header_len) {
+              size_t toCopy = min(header_len - sent, canSend);
+              memcpy(buffer, header + sent, toCopy);
+              sent += toCopy;
+              return toCopy;
+            }
+            else if (sent < header_len + fb->len) {
+              size_t imgOffset = sent - header_len;
+              size_t toCopy = min(fb->len - imgOffset, canSend);
+              memcpy(buffer, fb->buf + imgOffset, toCopy);
+              sent += toCopy;
+              return toCopy;
+            }
+            else {
+              size_t footerOffset = sent - (header_len + fb->len);
+              size_t toCopy = min(footer_len - footerOffset, canSend);
+              memcpy(buffer, footer + footerOffset, toCopy);
+              sent += toCopy;
 
-          if (sent < total_len) {
-            size_t footerOffset = sent - (header_len + fb->len);
-            size_t toCopy = min(footer_len - footerOffset, maxLen);
-            memcpy(buffer, footer + footerOffset, toCopy);
-            sent += toCopy;
-            return toCopy;
-          }
-
-          // Frame fully sent
-          esp_camera_fb_return(fb);
-          fb = nullptr;
-          sent = 0;
-
-          return 0;
+              if (sent >= total_len) {
+                esp_camera_fb_return(fb);
+                fb = nullptr;
+                sent = 0;
+              }
+              return toCopy;
+            }
         }
-      );
+        return 0;
+    });
     response->addHeader("Access-Control-Allow-Origin", "*");
     request->send(response);
   });
