@@ -169,6 +169,7 @@ class StreamManager:
                             buf = ws_stream.transport.get_write_buffer_size()
                             if buf > 1024 * 1024:
                                 logging.warning(f"WS buffer high: {buf}")
+                    print("HTTP STREAM CLOSED")
                   except websockets.exceptions.ConnectionClosed:
                       logging.warning("WS closed, reconnecting... break")
                       break
