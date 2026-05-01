@@ -3,6 +3,9 @@ const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : 
 
 //need to add logic to reflect disconnected streams from either frontend or backend
 //need to impliment login with rate limiting and 2fa
+//fix modify headers after streaming start crash because of invalid jwt token
+//need to confirm and add logging for stream stream stopping on device and device disconnects on pyserver and further upstream
+
 
 let deviceID;
 let ws;
