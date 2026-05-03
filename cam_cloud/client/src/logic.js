@@ -2,7 +2,6 @@ const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
 const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : `${protocol}://${window.location.hostname}:3000`
 
 //need to add logic to reflect disconnected streams from either frontend or backend
-//need to impliment login with rate limiting and 2fa
 //fix modify headers after streaming start crash because of invalid jwt token
 //need to confirm and add logging for stream stream stopping on device and device disconnects on pyserver and further upstream
 
@@ -15,20 +14,81 @@ const laserstartButton = document.getElementById('laser-start');
 const laserwrapper = document.getElementById('laser-wrapper');
 const controller = document.getElementById("controller");
 const feedsection = document.getElementById("feed-section");
+const controlsection = document.getElementById("control-section");
 const feedframe = document.getElementById("feed");
+const loginForm = document.getElementById('login-form');
+const deviceMenu = document.getElementById('device-menu');
+const formMenu = document.getElementById('formMenu');
+const errorDisplay = document.getElementById('error-message');
+
+
+function showloginUI() {
+  controlsection.classList.add('hidden');
+  feedsection.classList.add('hidden');
+  deviceMenu.classList.add('hidden');
+  feedframe.src = "";
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+  }
+    }
+  formMenu.classList.remove('hidden');
+  loginForm.reset();
+}
+
+function showloggedinUI() {
+  loginForm.reset();
+  loginForm.classList.add('hidden');
+  feedframe.src = "";
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+  }
+    }
+  deviceMenu.classList.remove('hidden');
+  controlsection.classList.add('hidden');
+  feedsection.classList.add('hidden');
+}
+
+
 
 async function getValidToken() {
   let token = localStorage.getItem('relay_token');
   
   if (!token) {
-    const response = await fetch(`https://${window.location.host}/get-token`);
-    console.log(response);
-    const data = await response.json();
-    token = data.token;
-    localStorage.setItem('relay_token', token);
+    showloginUI();
+    return
   }
   return token;
 }
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(loginForm);
+  const payload = Object.fromEntries(formData.entries());
+
+  try {
+    const response = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    
+    if (data.token) {
+      localStorage.setItem('jwt_token', data.token);
+      getData();
+    }
+  } catch (err) {
+    console.error('Login Error:', err.message);  
+
+    if (errorDisplay) {
+      errorDisplay.textContent = err.message;
+      errorDisplay.style.color = 'red';
+    }
+  }
+});
 
 function UpdateUI(event) {
   const message = JSON.parse(event.data);
@@ -37,52 +97,76 @@ function UpdateUI(event) {
     laserstartButton.classList.remove('hidden');
     laserwrapper.classList.remove('hidden');
   }
+  if (message.type == "error") {
+    showloginUI();
+  }
+}
 
+function openWs(token) {
+  const urlwithtoken = `${URL}?token=${token}`
+  ws = new WebSocket (urlwithtoken);
+  ws.onopen = () => {
+    console.log("connected to server")
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+        type: "init_conn",
+        role: "client",
+        device: "node_server",
+      }))
+    }
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping" }));
+      };
+    }, 30000);
+  ws.addEventListener('message', UpdateUI);
+}
 }
 
 async function getData() {
   console.log('fetching...');
   const token = await getValidToken();
+  if (!token) return;
   const url = import.meta.env.PROD ? `https://${window.location.host}/device_list?hubID=123&token=${token}` : `http://${window.location.hostname}:3000/device_list?hubID=123&token=${token}`;
   try {
     const response = await fetch(url);
     if (!response.ok) {
+      const result = await response.json();
+      if (result.data.error == "Invalid or expired token.") {
+        showloginUI();
+        return
+      }
       throw new Error(`Response status: ${response.status}`);
     }
-    console.log(response)
     const result = await response.json();
-    console.log(result);
     let cameralist = document.getElementById("cam-select")
-    cameralist.addEventListener("change", attach)
+    cameralist.addEventListener("change", initiatefeed)
     for (let camera of result.data) {
       let cam = document.createElement("option")
       cam.value = cam.text = camera
       cameralist.appendChild(cam)
     }
-    const urlwithtoken = `${URL}?token=${token}`
-    ws = new WebSocket (urlwithtoken);
-    ws.onopen = () => {
-      console.log("connected to server")
-      ws.send(JSON.stringify({
-        type: "init_conn",
-        role: "client",
-        device: "node_server",
-        hubID: 123
-      }))
-      setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "ping" }));
-        }
-      }, 30000);
-    };
-    ws.addEventListener('message', UpdateUI);
+    openWs(token)
+    showloggedinUI();
   } catch (error) {
     console.error(error.message);
   }
 }
 
-getData();
-
+const initiatefeed = (event) => {
+  deviceID = event.target.value;
+  feedsection.classList.remove('hidden');
+  controlsection.classList.remove('hidden');
+  controller.classList.add('hidden');
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+  }
+    let token = localStorage.getItem('relay_token');
+  feedframe.classList.remove('active');
+  laserstartButton.classList.remove('hidden');
+  laserwrapper.classList.remove('hidden');
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&hubID=123&token=${token}`);
+}
 feedstopButton.addEventListener("click", () => {
   feedframe.setAttribute("src", "");
   feedframe.classList.remove('active');
@@ -91,27 +175,48 @@ feedstopButton.addEventListener("click", () => {
   laserstartButton.classList.add('hidden');
   laserwrapper.classList.add('hidden');
   feedsection.classList.add('hidden');
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-});
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+  }
+  });
+
 laserstopButton.addEventListener("click", () => {
   console.log('Laser stop button clicked on click event');
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  controller.classList.add('hidden');
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+  }
+    controller.classList.add('hidden');
   laserstartButton.classList.remove('hidden');
   laserwrapper.classList.remove('hidden');
 });
 laserstopButton.addEventListener("touchend", () => {
   console.log('Laser stop button clicked on touchend event');
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  controller.classList.add('hidden');
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+  }
+    controller.classList.add('hidden');
   laserstartButton.classList.remove('hidden');
   laserwrapper.classList.remove('hidden');
 });
-feedframe.onload = () => {
-  setTimeout(() => {
-    feedframe.classList.add('active');
-  }, 300); // small intentional delay
-};
+laserstartButton.addEventListener("click", async (e) => {
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: deviceID, hubID: 123}));
+   }
+      const response = await waitForNextMessage(ws);
+    console.log(response)
+    if (response.data == "fail") window.alert("laser already being controllerled");
+    else if (response.data == "success") {
+      laserstartButton.classList.add('hidden');
+      laserwrapper.classList.add('hidden');
+      controller.classList.remove('hidden');
+    }
+  } catch (err) {
+    console.error(err);
+    window.alert("Connection error: The device did not respond in time")
+  }
+});
+
 
 function waitForNextMessage(ws, timeout = 5000) {
   return new Promise ((resolve, reject) => {
@@ -135,49 +240,13 @@ function waitForNextMessage(ws, timeout = 5000) {
   })
 }
 
-laserstartButton.addEventListener("click", async (e) => {
-  try {
-    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: deviceID, hubID: 123}));
-    const response = await waitForNextMessage(ws);
-    console.log(response)
-    if (response.data == "fail") window.alert("laser already being controllerled");
-    else if (response.data == "success") {
-      laserstartButton.classList.add('hidden');
-      laserwrapper.classList.add('hidden');
-      controller.classList.remove('hidden');
-    }
-  } catch (err) {
-    console.error(err);
-    window.alert("Connection error: The device did not respond in time")
-  }
-});
-// maybe add delay here or wait for success confirmation logic before showing activat laser button?
-laserstopButton.addEventListener("click", () => {
-  e.stopPropagation();
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  controller.classList.add('hidden');
-  laserstartButton.classList.remove('hidden');
-  laserwrapper.classList.remove('hidden');
-});
+feedframe.onload = () => {
+  setTimeout(() => {
+    feedframe.classList.add('active');
+  }, 300); // small intentional delay for effect
+};
 
-
-const attach = (event) => {
-  console.log("event-triggered");
-  deviceID = event.target.value;
-  feedsection.classList.remove('hidden');
-  controller.classList.add('hidden');
-  ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  let token = localStorage.getItem('relay_token');
-  feedframe.classList.remove('active');
-  laserstartButton.classList.remove('hidden');
-  laserwrapper.classList.remove('hidden');
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&hubID=123&token=${token}`);
-  // setTimeout(() => {
-  //   feedframe.classList.add('active');
-  // }, 500);
-}
-
-
+getData();
 
 let lastSendTime = 0;
 const throttleMS = 50;
@@ -192,12 +261,14 @@ function sendServoData(x, y) {
   if (now - lastSendTime > throttleMS && hasMovedEnough) {
     x = Math.round(x*90)
     y = Math.round(y*90)
-    ws.send(JSON.stringify({ 
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ 
       type: "servo_cmd", 
       role: "client", 
       data: { x, y }, 
       device: deviceID
     }))
+  }
     lastSentX = x;
     lastSentY = y;
     lastSendTime = now;

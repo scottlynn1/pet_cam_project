@@ -9,12 +9,22 @@
   <body>
     <div id="container" class="container">
       <div class="top-bar">
-        <label for="cam-select" class="visually-hidden">Camera</label>
-        <select id="cam-select">
-          <option id="default-select" value="" disabled selected hidden>--Choose Camera--</option>
-          <option value="living room">Living Room</option>
-          <option value="guest room">Guest Room</option>
-        </select>
+        <div id="form-menu" class="formmenu">
+          <form id="login-form hidden" class="loginform">
+            <input type="text" name="username" required placeholder="Username">
+            <input type="password" name="password" required placeholder="Password">
+            <button type="submit">Login</button>
+            <p id="error-message"></p>
+          </form>
+        </div>
+        <div id="device-menu" class="devicemenu">
+          <label for="cam-select" class="visually-hidden">Camera</label>
+          <select id="cam-select">
+            <option id="default-select" value="" disabled selected hidden>--Choose Camera--</option>
+            <option value="living room">Living Room</option>
+            <option value="guest room">Guest Room</option>
+          </select>
+        </div>
       </div>
 
       <div id="feed-section" class="feedsection hidden">
@@ -22,9 +32,9 @@
         <button id="feed-stop" class="feedstop">X</button>
       </div>
 
-      <div class="controlsection">
-        <div id="laser-wrapper" class="laserwrapper hidden">
-          <button id="laser-start" class="laserstart hidden">Activate Laser</button>
+      <div id="control-section" class="controlsection hidden">
+        <div id="laser-wrapper" class="laserwrapper">
+          <button id="laser-start" class="laserstart">Activate Laser</button>
         </div>
         <div id="controller" class="controller hidden">
           <button id="laser-stop" class="laserstop">X</button>
