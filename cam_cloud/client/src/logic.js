@@ -18,7 +18,7 @@ const controlsection = document.getElementById("control-section");
 const feedframe = document.getElementById("feed");
 const loginForm = document.getElementById('login-form');
 const deviceMenu = document.getElementById('device-menu');
-const formMenu = document.getElementById('formMenu');
+const formMenu = document.getElementById('form-menu');
 const errorDisplay = document.getElementById('error-message');
 
 
@@ -38,7 +38,7 @@ function showloginUI() {
 
 function showloggedinUI() {
   loginForm.reset();
-  loginForm.classList.add('hidden');
+  formMenu.classList.add('hidden');
   feedframe.src = "";
   if (ws && ws.readyState === WebSocket.OPEN) {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -127,12 +127,16 @@ async function getData() {
   console.log('fetching...');
   const token = await getValidToken();
   if (!token) return;
-  const url = import.meta.env.PROD ? `https://${window.location.host}/device_list?hubID=123&token=${token}` : `http://${window.location.hostname}:3000/device_list?hubID=123&token=${token}`;
+  const url = import.meta.env.PROD ? `https://${window.location.host}/device_list?token=${token}` : `http://${window.location.hostname}:3000/device_list?token=${token}`;
   try {
     const response = await fetch(url);
     if (!response.ok) {
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error(`Expected JSON but got ${contentType || 'nothing'}. Status: ${response.status}`);
+      }
       const result = await response.json();
-      if (result.data.error == "Invalid or expired token.") {
+      if (result.error == "Invalid or expired token.") {
         showloginUI();
         return
       }

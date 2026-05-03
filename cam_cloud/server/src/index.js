@@ -7,11 +7,12 @@ import fs from'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
-import db, { seedDatabase } from './db/database.js';
+import jwt from 'jsonwebtoken';
 import { HubManager } from './managers/HubManager.js';
 import { ClientManager } from './managers/ClientManager.js';
 import { StreamManager } from './managers/StreamManager.js';
 import { authenticateToken, verifyToken } from './middleware/auth.js';
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const timeoutBuffer = fs.readFileSync(path.join(__dirname, 'assets/timeout.jpg'));
@@ -26,14 +27,14 @@ const PORT = parseInt(process.env.PORT);
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error("FATAL: JWT_SECRET not found");
 // Execute the seed
-seedDatabase().catch(err => {
+await seedDatabase().catch(err => {
   console.error("Seeding failed:", err);
 });
 // initialize express app, ws server, and middleware
 const app = express();
 app.use(express.json());
 app.use(cors({
-  origin: 'http://localhost:5173', // Your frontend
+  origin: ['http://localhost:5173', 'https://project4.scottlynn.live'],
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
