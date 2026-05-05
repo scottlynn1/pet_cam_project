@@ -1,4 +1,8 @@
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env.production' })
+const JWT_SECRET = process.env.JWT_SECRET;
 
 //need to add blacklisting of old tokens due to stale data from db updates
 
@@ -30,6 +34,7 @@ export const authenticateToken = (req, res, next) => {
     // 4. Move to the next piece of logic
     next(); 
   } catch (err) {
+    console.log("Invalid or expired token.")
     res.status(403).json({ error: "Invalid or expired token." });
   }
 };

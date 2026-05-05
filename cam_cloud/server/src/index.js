@@ -12,6 +12,8 @@ import { HubManager } from './managers/HubManager.js';
 import { ClientManager } from './managers/ClientManager.js';
 import { StreamManager } from './managers/StreamManager.js';
 import { authenticateToken, verifyToken } from './middleware/auth.js';
+import db, { seedDatabase } from './db/database.js';
+
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,12 +55,14 @@ app.post('/login', async (req, res) => {
   try {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
     if (!user) {
+      console.log('Invalid username');
       return res.status(401).json({ error: "Invalid username" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
+      console.log('Invalid password');
       return res.status(401).json({ error: "Invalid password" });
     }
 

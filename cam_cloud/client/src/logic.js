@@ -53,7 +53,7 @@ function showloggedinUI() {
 
 
 async function getValidToken() {
-  let token = localStorage.getItem('relay_token');
+  let token = localStorage.getItem('jwt_token');
   
   if (!token) {
     showloginUI();
@@ -157,7 +157,7 @@ async function getData() {
   }
 }
 
-const initiatefeed = (event) => {
+const initiatefeed = async (event) => {
   deviceID = event.target.value;
   feedsection.classList.remove('hidden');
   controlsection.classList.remove('hidden');
@@ -165,11 +165,11 @@ const initiatefeed = (event) => {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   }
-    let token = localStorage.getItem('relay_token');
+  let token = await getValidToken();
   feedframe.classList.remove('active');
   laserstartButton.classList.remove('hidden');
   laserwrapper.classList.remove('hidden');
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&hubID=123&token=${token}`);
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&token=${token}`);
 }
 feedstopButton.addEventListener("click", () => {
   feedframe.setAttribute("src", "");
