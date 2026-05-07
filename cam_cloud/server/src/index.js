@@ -3,9 +3,6 @@ import dotenv from 'dotenv';
 import http from "http";
 import cors from "cors";
 import { WebSocketServer } from 'ws';
-import fs from'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { HubManager } from './managers/HubManager.js';
@@ -15,11 +12,6 @@ import { authenticateToken, verifyToken } from './middleware/auth.js';
 import db, { seedDatabase } from './db/database.js';
 
 
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const timeoutBuffer = fs.readFileSync(path.join(__dirname, 'assets/timeout.jpg'));
-const offlineBuffer = fs.readFileSync(path.join(__dirname, 'assets/offline.jpg'));
-const errorBuffer   = fs.readFileSync(path.join(__dirname, 'assets/error.jpg'));
 // set up development or production env vars
 const env = process.env.NODE_ENV || 'development';
 dotenv.config({

@@ -2,8 +2,9 @@ const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
 const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : `${protocol}://${window.location.hostname}:3000`
 
 //need to add logic to reflect disconnected streams from either frontend or backend
-//fix modify headers after streaming start crash because of invalid jwt token
+//need to add logic for when device disconnects unexpectedly and remove device from registered devices
 //need to confirm and add logging for stream stream stopping on device and device disconnects on pyserver and further upstream
+//all of these are likely the same issue
 
 
 let deviceID;

@@ -1,3 +1,13 @@
+import fs from'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const timeoutBuffer = fs.readFileSync(path.join(__dirname, '../assets/timeout.jpg'));
+const offlineBuffer = fs.readFileSync(path.join(__dirname, '../assets/offline.jpg'));
+const errorBuffer = fs.readFileSync(path.join(__dirname, '../assets/error.jpg'));
+
 export class StreamManager {
   constructor(hubmanager) {
     this.runningstreams = {};

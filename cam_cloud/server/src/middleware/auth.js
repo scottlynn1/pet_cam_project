@@ -32,7 +32,7 @@ export const authenticateToken = (req, res, next) => {
     req.user = verified; 
     
     // 4. Move to the next piece of logic
-    next(); 
+    next();
   } catch (err) {
     console.log("Invalid or expired token.")
     res.status(403).json({ error: "Invalid or expired token." });

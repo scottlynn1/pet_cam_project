@@ -37,10 +37,10 @@ class DeviceManager:
                           device["last_sent_time"] = time.time()
                       except Exception as e:
                           print(f"Watchdog failed to send command: {e}")
-                          break
+                          continue
         finally:
             print("watchdog loop ended")
-            self.watchdog_loop = None
+            self.watchdog_task = None
 
     def start_watchdog(self):
         if not self.watchdog_task:
@@ -50,7 +50,6 @@ class DeviceManager:
         if self.watchdog_task:
             print("stoping watchdog")
             self.watchdog_task.cancel()
-            self.watchdog_task = None
             
     async def register(self, stream_id, role, websocket):
         print(f"registering device: {role} with stream_id: {stream_id}")
