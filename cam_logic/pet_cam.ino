@@ -107,7 +107,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
 }
 
 void setupWebSocket() {
-  ws.begin("scottberry.local", 5000);
+  ws.begin("192.168.1.101", 5000);
   ws.onEvent(onWsEvent);
   ws.setReconnectInterval(3000);
 }
@@ -200,19 +200,6 @@ void setupHttp() {
 
   server.begin();
 }
-
-
-// void startStream() {
-//   if (!streaming) {
-//     streaming = true;
-//   }
-// }
-
-// void stopStream() {
-//   if (streaming) {
-//     streaming = false;
-//   }
-// }
 
 void setup() {
   Serial.begin(115200);
