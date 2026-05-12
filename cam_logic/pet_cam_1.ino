@@ -5,7 +5,7 @@
 #include <ArduinoJson.h>
 #include <ESP32Servo.h>
 #include <ESPmDNS.h>
-#include "camera_pins.h"
+#include "camera_1_pins.h"
 
 const char* ssid = "CommunityFibre10Gb_225C5_2.4";
 const char* password = "B@obean2026";
