@@ -41,7 +41,7 @@ class StreamManager:
               }))
           while True:
             try:
-              async with session.get(f"{self.cam_url}{device_id}") as resp:
+              async with session.get(f"{self.cam_url}{device_id}.local/stream") as resp:
                   if resp.status != 200:
                       logging.warning("Bad response: %s", resp.status)
                       await asyncio.sleep(1)

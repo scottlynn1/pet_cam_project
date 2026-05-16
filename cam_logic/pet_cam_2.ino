@@ -3,9 +3,15 @@
 #include <ESPAsyncWebServer.h>
 #include "esp_camera.h"
 #include <ArduinoJson.h>
-#include <ESP32Servo.h>
+// #include <ESP32Servo.h>
 #include <ESPmDNS.h>
 #include "camera_2_pins.h"
+
+#define PAN_PIN 14
+#define TILT_PIN 15
+
+#define PAN_CH 2
+#define TILT_CH 3
 
 const char* ssid = "CommunityFibre10Gb_225C5_2.4";
 const char* password = "B@obean2026";
@@ -30,22 +36,48 @@ camera_config_t camera_config = {
   .ledc_timer = LEDC_TIMER_0,
   .ledc_channel = LEDC_CHANNEL_0,
   .pixel_format = PIXFORMAT_JPEG,
-  .frame_size = FRAMESIZE_QVGA,
-  .jpeg_quality = 10,
+  .frame_size = FRAMESIZE_VGA,
+  .jpeg_quality = 8,
   .fb_count = 2,
-  .grab_mode = CAMERA_GRAB_WHEN_EMPTY 
+  .fb_location = CAMERA_FB_IN_PSRAM,
+  .grab_mode = CAMERA_GRAB_LATEST,
 };
-void moveServos(float pan, float tilt);
+
+// void moveServos(float pan, float tilt);
+
+
+void setupServos() {
+  // We link the GPIO (PAN_PIN) to a Channel (PAN_CH)
+  ledcAttachChannel(PAN_PIN, 50, 12, PAN_CH);
+  ledcAttachChannel(TILT_PIN, 50, 12, TILT_CH);
+}
+
+void writeServo(uint8_t channel, int angle) {
+  angle = constrain(angle, 0, 180);
+  int us = map(angle, 0, 180, 500, 2500);
+  uint32_t duty = (uint32_t)((us / 20000.0) * 4095);
+
+  // CRITICAL: We are now writing to the CHANNEL index (2 or 3)
+  ledcWrite(channel, duty); 
+}
+
 void startStream();
 void stopStream();
 
 
-Servo panServo;
-Servo tiltServo;
+// Servo panServo;
+// Servo tiltServo;
 
 WebSocketsClient ws;
 AsyncWebServer server(80);
 volatile bool streaming = false;
+
+// 1. Get the last 2 bytes of the Mac Address to create a unique ID
+uint64_t chipid = ESP.getEfuseMac(); 
+uint16_t uniqueID = (uint16_t)(chipid >> 30); 
+
+// 2. Format a unique hostname string (e.g., esp32cam-a1b2)
+String hostname = "esp32cam-" + String(uniqueID, HEX);
 
 void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   switch(type) {
@@ -68,7 +100,8 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         Serial.print(pan);
         Serial.print(" | Tilt: "); 
         Serial.println(tilt);
-        moveServos(pan, tilt);
+        writeServo(PAN_CH, pan);
+        writeServo(TILT_CH, tilt);
       }
       
       if (request["type"] == "laser_cmd") {
@@ -76,7 +109,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         if (request["data"] == "on") {
           digitalWrite(13, HIGH);
           reply["type"] = "status_update";
-          reply["role"] = "cam_2";
+          reply["role"] = "cam_1";
           reply["status"] = "on";
           reply["clientID"] = request["clientID"];
           shouldSend = true;
@@ -84,7 +117,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         if (request["data"] == "off") {
           digitalWrite(13, LOW);
           reply["type"] = "status_update";
-          reply["role"] = "cam_2";
+          reply["role"] = "cam_1";
           reply["status"] = "off";
           reply["clientID"] = request["clientID"];
           shouldSend = true;
@@ -94,8 +127,8 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       if (request["type"] == "init_conn") {
         Serial.println("init_conn received from Pi");
         reply["type"] = "init_conn";
-        reply["role"] = "cam_2";
-        reply["streamId"] = 2;
+        reply["role"] = "cam_1";
+        reply["streamId"] = String(uniqueID, HEX);
           shouldSend = true;
       }
       if (shouldSend) {
@@ -114,13 +147,13 @@ void setupWebSocket() {
 }
 
 
-void moveServos(float pan, float tilt) {
-  panServo.write(pan);
-  tiltServo.write(tilt);
-}
+// void moveServos(float pan, float tilt) {
+//   panServo.write(pan);
+//   tiltServo.write(tilt);
+// }
 
 void setupHttp() {
-  server.on("/stream/2", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/stream", HTTP_GET, [](AsyncWebServerRequest *request) {
 
     streaming = true;
     Serial.println("video stream requested");
@@ -149,7 +182,7 @@ void setupHttp() {
               Serial.println("frame capture failed, stream stopped");
               return 0;
             }
-
+            Serial.printf("Captured frame: %u bytes\n", fb->len);
             snprintf(header, sizeof(header),
               "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
               fb->len
@@ -186,6 +219,7 @@ void setupHttp() {
               sent += toCopy;
 
               if (sent >= total_len) {
+                Serial.println("Frame fully sent");
                 esp_camera_fb_return(fb);
                 fb = nullptr;
                 sent = 0;
@@ -204,28 +238,40 @@ void setupHttp() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println(psramFound());
+  // Power up the camera (Specific to XIAO S3 Sense)
+  // pinMode(32, OUTPUT);
+  // digitalWrite(32, HIGH);
+  // delay(500);
+
+  Serial.println("a");
+
+  if (!psramFound()) {
+    Serial.println("PSRAM NOT FOUND");
+  } else {
+    Serial.println("PSRAM OK");
+  }
+
+  if (esp_camera_init(&camera_config) != ESP_OK) {
+    Serial.println("Camera init failed");
+    return;
+  }
+
+  // panServo.attach(14); // example GPIO
+  // tiltServo.attach(15);
+  pinMode(13, OUTPUT);
+  setupServos();
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
   Serial.println("WiFi connected");
-
-  if (!MDNS.begin("esp32cam")) {
+  WiFi.setSleep(false);
+  if (!MDNS.begin(hostname)) {
     Serial.println("mDNS failed");
   }
-  // Power up the camera (Specific to XIAO S3 Sense)
-  pinMode(32, OUTPUT);
-  digitalWrite(32, HIGH);
-  delay(500);
-
-  panServo.attach(14); // example GPIO
-  tiltServo.attach(15);
-  pinMode(13, OUTPUT);
-  if (esp_camera_init(&camera_config) != ESP_OK) {
-    Serial.println("Camera init failed");
-    return;
-  }
+  Serial.println(hostname);
   setupWebSocket();
   setupHttp();
 }
@@ -233,4 +279,5 @@ void setup() {
 
 void loop() {
   ws.loop();
+  delay(1);
 }

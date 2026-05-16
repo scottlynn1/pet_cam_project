@@ -7,7 +7,7 @@ from node_connection import NodeConnection
 
 PORT = 5000
 NODE_URL = 'wss://project4.scottlynn.live/ws'
-CAM_URL = "http://esp32cam.local/stream/"
+CAM_URL = "http://esp32cam-"
 SERVER_ID = 123
             
 device_manager = DeviceManager(SERVER_ID)
