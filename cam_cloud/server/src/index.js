@@ -10,7 +10,7 @@ import { ClientManager } from './managers/ClientManager.js';
 import { StreamManager } from './managers/StreamManager.js';
 import { authenticateToken, verifyToken } from './middleware/auth.js';
 import db, { seedDatabase } from './db/database.js';
-
+import { v4 } from 'uuid';
 
 // set up development or production env vars
 const env = process.env.NODE_ENV || 'development';
@@ -59,7 +59,8 @@ app.post('/login', async (req, res) => {
     }
 
     const payload = { 
-      id: user.id, 
+      id: user.id,
+      client_id: v4(),
       hub: user.hub 
     };
     
@@ -130,7 +131,7 @@ wss.on('connection', async (ws, req) => {
             
             if (!token) throw new Error("No token provided");
             const decoded = await verifyToken(token);
-            const clientID = decoded.id;
+            const clientID = decoded.client_id;
             const hub = decoded.hub;
             
             console.log(`Verified JWT connection for client: ${clientID}`);
