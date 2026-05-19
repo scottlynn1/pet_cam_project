@@ -28,8 +28,9 @@ async def listen(websocket):
       if device_data.get("type") == "init_conn":
           print("init_conn recieved from ", device_data["role"])
           streamId = str(device_data["streamId"])
+          camName = device_data.get("camName", streamId)
           print("Registering: ", device_data["role"], " with streamId: ", streamId)
-          await device_manager.register(streamId, device_data["role"], websocket)
+          await device_manager.register(streamId, device_data["role"], websocket, camName)
       else:
           print("first message not 'init_conn'")
           raise Exception("message recieved not 'init_conn'")

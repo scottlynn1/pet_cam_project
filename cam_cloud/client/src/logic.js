@@ -21,12 +21,16 @@ const loginForm = document.getElementById('login-form');
 const deviceMenu = document.getElementById('device-menu');
 const formMenu = document.getElementById('form-menu');
 const errorDisplay = document.getElementById('error-message');
+const renameWrapper = document.getElementById('rename-wrapper');
+const camNameInput = document.getElementById('cam-name-input');
+const camNameSave = document.getElementById('cam-name-save');
 
 
 function showloginUI() {
   controlsection.classList.add('hidden');
   feedsection.classList.add('hidden');
   deviceMenu.classList.add('hidden');
+  renameWrapper.classList.add('hidden');
   feedframe.src = "";
   if (ws && ws.readyState === WebSocket.OPEN) {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -148,7 +152,8 @@ async function getData() {
     cameralist.addEventListener("change", initiatefeed)
     for (let camera of result.data) {
       let cam = document.createElement("option")
-      cam.value = cam.text = camera
+      cam.value = camera.id
+      cam.text = camera.name
       cameralist.appendChild(cam)
     }
     openWs(token)
@@ -163,6 +168,8 @@ const initiatefeed = async (event) => {
   feedsection.classList.remove('hidden');
   controlsection.classList.remove('hidden');
   controller.classList.add('hidden');
+  renameWrapper.classList.remove('hidden');
+  camNameInput.value = event.target.options[event.target.selectedIndex].text;
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   }
@@ -180,10 +187,11 @@ feedstopButton.addEventListener("click", () => {
   laserstartButton.classList.add('hidden');
   laserwrapper.classList.add('hidden');
   feedsection.classList.add('hidden');
+  renameWrapper.classList.add('hidden');
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   }
-  });
+});
 
 laserstopButton.addEventListener("click", () => {
   console.log('Laser stop button clicked on click event');
@@ -250,6 +258,17 @@ feedframe.onload = () => {
     feedframe.classList.add('active');
   }, 300); // small intentional delay for effect
 };
+
+camNameSave.addEventListener("click", () => {
+  const newName = camNameInput.value.trim();
+  if (!newName || !deviceID) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "set_cam_name", device: deviceID, name: newName }));
+  }
+  const select = document.getElementById("cam-select");
+  const selected = select.options[select.selectedIndex];
+  if (selected) selected.text = newName;
+});
 
 getData();
 

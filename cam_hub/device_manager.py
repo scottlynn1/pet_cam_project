@@ -44,11 +44,12 @@ class DeviceManager:
             print("stoping watchdog")
             self.watchdog_task.cancel()
             
-    async def register(self, stream_id, role, websocket):
+    async def register(self, stream_id, role, websocket, cam_name=None):
         print(f"registering device: {role} with stream_id: {stream_id}")
         self.devices[stream_id] = {
             "ws": websocket,
             "role": role,
+            "cam_name": cam_name if cam_name else stream_id,
             "status": "off",
             "client_user": None,
             "pending_connection": False,
@@ -105,4 +106,4 @@ class DeviceManager:
         return self.devices.get(stream_id)
 
     def list(self):
-        return list(self.devices.keys())
+        return [{"id": sid, "name": dev["cam_name"]} for sid, dev in self.devices.items()]
