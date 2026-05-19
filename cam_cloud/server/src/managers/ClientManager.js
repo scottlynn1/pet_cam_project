@@ -8,7 +8,7 @@ export class ClientManager {
     this.clientsockets[clientID] = ws;
     ws.on("message", (message) => {
       const msg = JSON.parse(message);
-      if (msg.type === "servo_cmd" || msg.type == "laser_cmd") {
+      if (msg.type === "servo_cmd" || msg.type === "laser_cmd" || msg.type === "set_cam_name") {
 	      console.log(`Message recieved on client socket with clientID: ${clientID}\n  ${msg}`)
         const pyserver = this.hubmanager.hubs[hubID]?.socket
         if (pyserver) {
@@ -26,7 +26,7 @@ export class ClientManager {
       // remove client_user from devices associated with hubID
       if (pyserver) {
         for (let device of this.hubmanager.hubs[hubID].devices) {
-          pyserver.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device, hubID: hubID, clientID}));
+          pyserver.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: device.id, hubID: hubID, clientID}));
           console.log("laser off sent from cloud backend")
         }
       }
