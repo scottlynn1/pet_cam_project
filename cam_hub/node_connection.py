@@ -14,7 +14,6 @@ class NodeConnection:
         while True:
             try:
                 async with websockets.connect(uri) as ws:
-                    # maybe add logic here to send off command to all lasers if commands not recieved for more than a period of time ? for all devices in on status
                     self.ws = ws
                     self.device_manager.comm_socket = ws
                     print(f"connecting to node server")
