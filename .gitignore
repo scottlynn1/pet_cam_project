@@ -1,0 +1,7 @@
+.env.production
+.env.development
+.env
+.venv
+*.sh
+node_modules/
+*.db
