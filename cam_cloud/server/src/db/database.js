@@ -1,7 +1,7 @@
-import { Database } from 'better-sqlite3';
-import { bcrypt } from 'bcryptjs';
+import Database from 'better-sqlite3';
+import bcrypt from 'bcryptjs';
 
-const db = new Database('users.db');
+const db = new Database(process.env.DB_PATH || './users.db');
 
 export async function seedDatabase() {
   const saltRounds = 10;
