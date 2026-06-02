@@ -3,6 +3,7 @@
 #include <ESPAsyncWebServer.h>
 #include "esp_camera.h"
 #include <ArduinoJson.h>
+#include <Preferences.h>
 // #include <ESP32Servo.h>
 #include <ESPmDNS.h>
 #include "camera_2_pins.h"
@@ -72,12 +73,15 @@ WebSocketsClient ws;
 AsyncWebServer server(80);
 volatile bool streaming = false;
 
+Preferences prefs;
+
 // 1. Get the last 2 bytes of the Mac Address to create a unique ID
-uint64_t chipid = ESP.getEfuseMac(); 
-uint16_t uniqueID = (uint16_t)(chipid >> 30); 
+uint64_t chipid = ESP.getEfuseMac();
+uint16_t uniqueID = (uint16_t)(chipid >> 30);
 
 // 2. Format a unique hostname string (e.g., esp32cam-a1b2)
 String hostname = "esp32cam-" + String(uniqueID, HEX);
+String camName;
 
 void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
   switch(type) {
@@ -129,7 +133,20 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         reply["type"] = "init_conn";
         reply["role"] = "cam_1";
         reply["streamId"] = String(uniqueID, HEX);
-          shouldSend = true;
+        reply["camName"] = camName;
+        shouldSend = true;
+      }
+
+      if (request["type"] == "set_cam_name") {
+        String newName = request["name"].as<String>();
+        if (newName.length() > 0 && newName.length() <= 32) {
+          camName = newName;
+          prefs.begin("cam_cfg", false);
+          prefs.putString("cam_name", camName);
+          prefs.end();
+          Serial.print("Camera name set to: ");
+          Serial.println(camName);
+        }
       }
       if (shouldSend) {
         String out;
@@ -238,6 +255,9 @@ void setupHttp() {
 
 void setup() {
   Serial.begin(115200);
+  prefs.begin("cam_cfg", true);
+  camName = prefs.getString("cam_name", String(uniqueID, HEX));
+  prefs.end();
   Serial.println(psramFound());
   // Power up the camera (Specific to XIAO S3 Sense)
   // pinMode(32, OUTPUT);

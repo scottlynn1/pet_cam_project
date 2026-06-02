@@ -66,6 +66,16 @@ class NodeConnection:
                     print("servo cmd failed, device being controlled by another user")
 
 
+            elif msg["type"] == "set_cam_name":
+                device["cam_name"] = msg["name"]
+                await device["ws"].send(json.dumps(msg))
+                if self.device_manager.comm_socket:
+                    await self.device_manager.comm_socket.send(json.dumps({
+                        "type": "sync_data",
+                        "devices": self.device_manager.list(),
+                        "hubID": self.server_id
+                    }))
+
             elif msg["type"] == "init_stream":
                 print(f"init stream cmd recieved, passing to stream manager")
                 await self.stream_manager.start(msg["device"], msg["socket_id"])

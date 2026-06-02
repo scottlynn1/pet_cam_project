@@ -17,7 +17,7 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "jsonwebtoken": "^9.0.3",
-    "socket.io": "^4.5.4",
+    "socket.io": "^4.8.3",
     "uuid": "^14.0.0"
   },
   "overrides": {
@@ -26,3 +26,7 @@
   "type": "module"
 }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> claude-edits
