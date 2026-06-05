@@ -5,3 +5,4 @@
 *.sh
 node_modules/
 *.db
+**/.venv/   
