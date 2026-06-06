@@ -159,7 +159,7 @@ select {
   letter-spacing: 0.3px;
   text-transform: uppercase;
   width: 100%;
-  max-width: 300px;
+  min-width: 300px;
 
   padding: 0.8em 1em;
 
@@ -270,8 +270,100 @@ option {
 
 .hidden {
   opacity: 0;
-  transform: scale(.95);
+  transform: translateY(-15px) scale(.95);
   pointer-events: none;
+}
+
+.devicemenu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rename-wrapper {
+  display: flex;
+  flex-direction: row;
+  transform: translateY(0) scale(1);
+  
+  /* Smooth transition for both entering and leaving */
+  transition: 
+    opacity 0.4s ease,
+    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0.4s;
+}
+
+.kebab-menu-btn {
+  background: none;
+  border: solid rgb(65, 65, 128);
+  font-size: 24px;   /* Controls the size of the dots */
+  color: #333;       /* Controls the color of the dots */
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 10%; /* Makes the hover effect a perfect circle */
+  transition: 
+    opacity 0.4s ease,
+    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0.4s,
+    background 0.2s;
+}
+
+/* Adds a nice subtle background when you hover over it */
+.kebab-menu-btn:hover {
+  background-color: rgba(88, 172, 232, 0.05);
+}
+
+.sleek-input {
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.8);
+  outline: none;
+  color: #1a1a1a;
+  
+  /* Smooth transition for focus states */
+  transition: 
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.2s ease;
+}
+
+/* Input Focus (When user clicks into it) */
+.sleek-input:focus {
+  border-color: #6366f1; /* Modern Indigo */
+  /* Soft glow effect using box-shadow */
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+}
+
+/* 2. Premium Button */
+.sleek-btn {
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #ffffff;
+  background-color: #6366f1; /* Matches the focus accent */
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  
+  /* Snap-back transition for hover and click states */
+  transition: 
+    background-color 0.2s ease,
+    transform 0.1s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s ease;
+}
+
+/* Button Hover (Mouse over) */
+.sleek-btn:hover {
+  background-color: #4f46e5; /* Slightly darker indigo */
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  transform: translateY(-1px); /* Micro lift */
+}
+
+/* Button Active (The exact moment of click) */
+.sleek-btn:active {
+  transform: translateY(1px) scale(0.98); /* Satisfying "press down" effect */
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.1);
 }
 
 

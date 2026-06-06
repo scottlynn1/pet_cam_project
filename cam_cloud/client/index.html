@@ -20,8 +20,15 @@
         <div id="device-menu" class="devicemenu hidden">
           <label for="cam-select" class="visually-hidden">Camera</label>
           <select id="cam-select">
-            <option id="default-select" value="" disabled selected hidden>--Choose Camera--</option>
+            <option id="default-select" value="" disabled selected>Select A Camera</option>
           </select>
+          <button id="toggle-rename-btn" class="kebab-menu-btn hidden" aria-label="Open menu">
+            &#8942;
+          </button>
+        </div>
+        <div id="rename-wrapper" class="rename-wrapper hidden">
+          <input type="text" id="cam-name-input" class="sleek-input" placeholder="Rename camera..." maxlength="32">
+          <button id="cam-name-save" class="sleek-btn">Save Name</button>
         </div>
       </div>
 
@@ -36,10 +43,6 @@
         </div>
         <div id="controller" class="controller hidden">
           <button id="laser-stop" class="laserstop">X</button>
-        </div>
-        <div id="rename-wrapper" class="hidden">
-          <input type="text" id="cam-name-input" placeholder="Rename camera..." maxlength="32">
-          <button id="cam-name-save">Save Name</button>
         </div>
       </div>
     </div>
