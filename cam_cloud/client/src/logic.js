@@ -5,7 +5,29 @@ const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : 
 // or maybe better reconection logic on py hub for when devices disconnect and reconnect or error out
 // and fix issue with multiple tabs in same browser attempting to control one
 // fix cam_hal cam_hal: FB-OVF
-
+const El2typ = (obj) => {
+  let str = obj.innerText;
+  obj.innerHTML =
+    "<span class='TxtWrape'></span><span class='typeBar'> </span>";
+  let optDf = [0, 150]; //Start Delay, Typing speed
+  let opt = obj.getAttribute("El2typ").replace(/}|{/gi, "").split(",");
+  opt = { ...optDf, ...opt };
+  obj.removeAttribute("El2typ");
+  setTimeout(() => {
+    for (let i = 0; i < str.length; i++) {
+      setTimeout(() => {
+        obj.querySelector(".TxtWrape").innerHTML += str[i];
+        if (i + 1 === str.length) {
+          obj.querySelector(".typeBar").remove();
+        }
+      }, opt[1] * i);
+    }
+  }, opt[0] *1000);
+};
+const El2typElements = document.querySelectorAll("[El2typ]");
+El2typElements.forEach((singleElm) => {
+  El2typ(singleElm);
+});
 
 let deviceID = null;
 let ws = null;
@@ -27,6 +49,7 @@ const renameWrapper = document.getElementById('rename-wrapper');
 const camNameInput = document.getElementById('cam-name-input');
 const camNameSave = document.getElementById('cam-name-save');
 const toggleRenameBtn = document.getElementById('toggle-rename-btn');
+const typewriter = document.getElementById('typewriter')
 
 
 function showloginUI() {
@@ -34,6 +57,7 @@ function showloginUI() {
   feedsection.classList.add('hidden');
   deviceMenu.classList.add('hidden');
   renameWrapper.classList.add('hidden');
+  typewriter.classList.add('removed');
   feedframe.src = "";
   if (ws && ws.readyState === WebSocket.OPEN) {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -47,6 +71,7 @@ function showloginUI() {
 function showloggedinUI() {
   loginForm.reset();
   formMenu.classList.add('hidden');
+  typewriter.classList.remove('removed');
   feedframe.src = "";
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
@@ -210,6 +235,7 @@ const initiatefeed = async (event) => {
   feedsection.classList.remove('hidden');
   controlsection.classList.remove('hidden');
   controller.classList.add('hidden');
+  typewriter.classList.add('removed');
   camNameInput.value = event.target.options[event.target.selectedIndex].text;
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));

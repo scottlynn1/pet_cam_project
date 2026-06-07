@@ -13,6 +13,46 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+* {
+	box-sizing: border-box;
+}
+
+body {
+  background-color: #1C0B4A;
+	margin: 0;
+	padding: 0;
+	text-align: center;
+}
+
+.read-width {
+	max-width: 830px;
+}
+
+.typewriter {
+	display: inline-block;
+	font-size: 25px;
+	font-family: Monospace;
+  color: #FFB52B;
+	margin-top: 50px;
+	letter-spacing: .2rem;
+}
+
+.typing {
+	word-wrap: wrap;
+  background-color: #3E3264;
+	line-height: 1.25;
+}
+
+#sentence {
+	animation: blink-caret 0.7s step-end infinite;
+	border-right: .15em solid #FFB52B;
+}
+
+@keyframes blink-caret {
+  50% { border-color: transparent }
+}
+
+
 a {
   font-weight: 500;
   color: #646cff;
@@ -266,6 +306,10 @@ option {
 
 .controller.hidden {
   transform: translateY(100px);
+}
+
+.removed {
+  display: none;
 }
 
 .hidden {
