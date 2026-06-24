@@ -350,12 +350,12 @@ let lastSentX = -1;
 let lastSentY = -1;
 const threshold = 0.02;
 
-function sendServoData(x, y) {
+function sendServoData(y, x) {
   const now = Date.now();
   const hasMovedEnough = Math.abs(x - lastSentX) > threshold || Math.abs(y - lastSentY) > threshold;
 
   if (now - lastSendTime > throttleMS && hasMovedEnough) {
-    x = Math.round(x*90)
+    x = 90 - Math.round(x*90)
     y = Math.round(y*90)
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ 
