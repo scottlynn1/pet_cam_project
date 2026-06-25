@@ -25,9 +25,6 @@ const El2typ = (obj) => {
   }, opt[0] *1000);
 };
 const El2typElements = document.querySelectorAll("[El2typ]");
-El2typElements.forEach((singleElm) => {
-  El2typ(singleElm);
-});
 
 let deviceID = null;
 let ws = null;
@@ -63,12 +60,15 @@ function showloginUI() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   }
-    }
-  formMenu.classList.remove('hidden');
-  loginForm.reset();
+}
+formMenu.classList.remove('hidden');
+loginForm.reset();
 }
 
 function showloggedinUI() {
+  El2typElements.forEach((singleElm) => {
+    El2typ(singleElm);
+  });
   loginForm.reset();
   formMenu.classList.add('hidden');
   typewriter.classList.remove('removed');
@@ -242,6 +242,7 @@ const initiatefeed = async (event) => {
   }
   let token = await getValidToken();
   feedframe.classList.remove('active');
+  laserwrapper.classList.remove('hidden');
   laserstartButton.classList.remove('hidden');
   toggleRenameBtn.classList.remove('hidden');
   feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&token=${token}`);
