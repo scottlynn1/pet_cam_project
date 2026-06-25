@@ -28,6 +28,7 @@ const El2typElements = document.querySelectorAll("[El2typ]");
 
 let deviceID = null;
 let ws = null;
+let reconnectTimeout;
 let pingInterval = null;
 let cameralist = document.getElementById("cam-select")
 const feedstopButton = document.getElementById("feed-stop");
@@ -83,7 +84,7 @@ function showloggedinUI() {
 
 
 
-async function getValidToken() {
+function getValidToken() {
   let token = localStorage.getItem('jwt_token');
   
   if (!token) {
@@ -140,6 +141,7 @@ function openWs(token) {
   ws.addEventListener('message', UpdateUI);
   ws.onopen = () => {
     console.log("connected to server")
+    clearTimeout(reconnectTimeout);
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
         type: "init_conn",
@@ -160,11 +162,11 @@ function openWs(token) {
 
   ws.onerror = (error) => {
     console.error("WebSocket error observed:", error);
-    cleanupSocket();
   };
 }
 
 function cleanupSocket() {
+  clearTimeout(reconnectTimeout);
   if (pingInterval) {
     clearInterval(pingInterval);
     pingInterval = null;
@@ -172,7 +174,9 @@ function cleanupSocket() {
   }
   if (ws) {
     ws.removeEventListener('message', UpdateUI); // Stops listening to this socket
-    
+    ws.onopen = null;
+    ws.onclose = null;
+    ws.onerror = null;
     // If it's lingering in a half-open state, shut it down
     if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
       ws.close();
@@ -180,6 +184,13 @@ function cleanupSocket() {
     
     ws = null;
     console.log("WebSocket event listeners removed and reference nulled.");
+    const token = getValidToken();
+    if (token) {
+      console.log("Scheduling reconnect in 5 seconds...");
+      reconnectTimeout = setTimeout(() => openWs(token), 5000);
+    } else {
+      console.log("Reconnect aborted: User needs to log in.");
+    }
   }
 }
 
@@ -282,14 +293,17 @@ laserstartButton.addEventListener("click", async (e) => {
   try {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: deviceID, hubID: 123}));
-   }
       const response = await waitForNextMessage(ws);
-    console.log(response)
-    if (response.data == "fail") window.alert("laser already being controllerled");
-    else if (response.data == "success") {
-      laserstartButton.classList.add('hidden');
-      laserwrapper.classList.add('hidden');
-      controller.classList.remove('hidden');
+      console.log(response)
+      if (response.data == "fail") window.alert("laser already being controllerled");
+      else if (response.data == "success") {
+        laserstartButton.classList.add('hidden');
+        laserwrapper.classList.add('hidden');
+        controller.classList.remove('hidden');
+      }
+    } else {
+      console.err(err);
+      window.alert("Websocket for device is stale, refresh page");
     }
   } catch (err) {
     console.error(err);

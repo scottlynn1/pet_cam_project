@@ -46,10 +46,7 @@ camera_config_t camera_config = {
   .grab_mode = CAMERA_GRAB_LATEST,
 };
 
-
-
 void setupServos() {
-  // We link the GPIO (PAN_PIN) to a Channel (PAN_CH)
   ledcAttachChannel(PAN_PIN, 50, 12, PAN_CH);
   ledcAttachChannel(TILT_PIN, 50, 12, TILT_CH);
 }
@@ -63,13 +60,6 @@ void writeServo(uint8_t pin, int angle) {
   lastServoCommandTime = millis(); 
   servosNeedFreeze = true; 
 }
-
-void freezeServo(uint8_t pin) {
-  pinMode(pin, OUTPUT);
-  digitalWrite(pin, HIGH);
-}
-void startStream();
-void stopStream();
 
 
 WebSocketsClient ws;
@@ -197,6 +187,7 @@ void setupHttp() {
               Serial.println("frame capture failed, stream stopped");
               return 0;
             }
+            // Serial.printf("Captured frame: %u bytes\n", fb->len);
             snprintf(header, sizeof(header),
               "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
               fb->len
@@ -233,6 +224,7 @@ void setupHttp() {
               sent += toCopy;
 
               if (sent >= total_len) {
+                // Serial.println("Frame fully sent");
                 esp_camera_fb_return(fb);
                 fb = nullptr;
                 sent = 0;
@@ -255,7 +247,10 @@ void setup() {
   camName = prefs.getString("cam_name", String(uniqueID, HEX));
   prefs.end();
   Serial.println(psramFound());
-
+  // Power up the camera (Specific to XIAO S3 Sense)
+  // pinMode(32, OUTPUT);
+  // digitalWrite(32, HIGH);
+  // delay(500);
 
   Serial.println("a");
 
@@ -270,7 +265,8 @@ void setup() {
     return;
   }
 
-
+  // panServo.attach(14); // example GPIO
+  // tiltServo.attach(15);
   pinMode(4, OUTPUT);
   setupServos();
   WiFi.begin(ssid, password);
