@@ -11,6 +11,7 @@ import { StreamManager } from './managers/StreamManager.js';
 import { authenticateToken, verifyToken } from './middleware/auth.js';
 import db, { seedDatabase } from './db/database.js';
 import { v4 } from 'uuid';
+import { rateLimit } from 'express-rate-limit';
 
 // set up development or production env vars
 const env = process.env.NODE_ENV || 'development';
@@ -32,6 +33,21 @@ app.use(cors({
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 3,
+  keyGenerator: (req) => {
+    return req.body.username || req.ip; 
+  },
+  message: {
+    success: false,
+    error: "Too many login attempts. Please try again after 15 minutes."
+  },
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
@@ -42,7 +58,7 @@ const streammanager = new StreamManager(hubmanager);
 hubmanager.clientmanager = clientmanager;
 hubmanager.streammanager = streammanager;
 
-app.post('/login', async (req, res) => {
+app.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   try {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
