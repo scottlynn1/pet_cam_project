@@ -1,8 +1,6 @@
 const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
 const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : `${protocol}://${window.location.hostname}:3000`
 
-// need to make sure that front end gets updates properly when camera disconnects and reconnects with same or diff ws
-// or maybe better reconection logic on py hub for when devices disconnect and reconnect or error out
 // and fix issue with multiple tabs in same browser attempting to control one
 // fix cam_hal cam_hal: FB-OVF
 const El2typ = (obj) => {
