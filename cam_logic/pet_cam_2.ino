@@ -4,15 +4,17 @@
 #include "esp_camera.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
-// #include <ESP32Servo.h>
 #include <ESPmDNS.h>
 #include "camera_2_pins.h"
 
-#define PAN_PIN 14
-#define TILT_PIN 15
+#define PAN_PIN 5
+#define TILT_PIN 6
 
-#define PAN_CH 2
-#define TILT_CH 3
+#define PAN_CH 4
+#define TILT_CH 5
+
+unsigned long lastServoCommandTime = 0;
+bool servosNeedFreeze = false;
 
 const char* ssid = "CommunityFibre10Gb_225C5_2.4";
 const char* password = "B@obean2026";
@@ -44,7 +46,6 @@ camera_config_t camera_config = {
   .grab_mode = CAMERA_GRAB_LATEST,
 };
 
-// void moveServos(float pan, float tilt);
 
 
 void setupServos() {
@@ -52,22 +53,24 @@ void setupServos() {
   ledcAttachChannel(PAN_PIN, 50, 12, PAN_CH);
   ledcAttachChannel(TILT_PIN, 50, 12, TILT_CH);
 }
-
-void writeServo(uint8_t channel, int angle) {
+void writeServo(uint8_t pin, int angle) {
   angle = constrain(angle, 0, 180);
   int us = map(angle, 0, 180, 500, 2500);
   uint32_t duty = (uint32_t)((us / 20000.0) * 4095);
 
-  // CRITICAL: We are now writing to the CHANNEL index (2 or 3)
-  ledcWrite(channel, duty); 
+  ledcWrite(pin, duty); 
+
+  lastServoCommandTime = millis(); 
+  servosNeedFreeze = true; 
 }
 
+void freezeServo(uint8_t pin) {
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, HIGH);
+}
 void startStream();
 void stopStream();
 
-
-// Servo panServo;
-// Servo tiltServo;
 
 WebSocketsClient ws;
 AsyncWebServer server(80);
@@ -104,24 +107,24 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
         Serial.print(pan);
         Serial.print(" | Tilt: "); 
         Serial.println(tilt);
-        writeServo(PAN_CH, pan);
-        writeServo(TILT_CH, tilt);
+        writeServo(PAN_PIN, pan);
+        writeServo(TILT_PIN, tilt);
       }
       
       if (request["type"] == "laser_cmd") {
         Serial.println(request["data"].as<const char*>());
         if (request["data"] == "on") {
-          digitalWrite(13, HIGH);
+          digitalWrite(4, HIGH);
           reply["type"] = "status_update";
-          reply["role"] = "cam_1";
+          reply["role"] = "cam_2";
           reply["status"] = "on";
           reply["clientID"] = request["clientID"];
           shouldSend = true;
         }
         if (request["data"] == "off") {
-          digitalWrite(13, LOW);
+          digitalWrite(4, LOW);
           reply["type"] = "status_update";
-          reply["role"] = "cam_1";
+          reply["role"] = "cam_2";
           reply["status"] = "off";
           reply["clientID"] = request["clientID"];
           shouldSend = true;
@@ -131,7 +134,7 @@ void onWsEvent(WStype_t type, uint8_t *payload, size_t len) {
       if (request["type"] == "init_conn") {
         Serial.println("init_conn received from Pi");
         reply["type"] = "init_conn";
-        reply["role"] = "cam_1";
+        reply["role"] = "cam_2";
         reply["streamId"] = String(uniqueID, HEX);
         reply["camName"] = camName;
         shouldSend = true;
@@ -164,11 +167,6 @@ void setupWebSocket() {
 }
 
 
-// void moveServos(float pan, float tilt) {
-//   panServo.write(pan);
-//   tiltServo.write(tilt);
-// }
-
 void setupHttp() {
   server.on("/stream", HTTP_GET, [](AsyncWebServerRequest *request) {
 
@@ -199,7 +197,6 @@ void setupHttp() {
               Serial.println("frame capture failed, stream stopped");
               return 0;
             }
-            Serial.printf("Captured frame: %u bytes\n", fb->len);
             snprintf(header, sizeof(header),
               "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
               fb->len
@@ -236,7 +233,6 @@ void setupHttp() {
               sent += toCopy;
 
               if (sent >= total_len) {
-                Serial.println("Frame fully sent");
                 esp_camera_fb_return(fb);
                 fb = nullptr;
                 sent = 0;
@@ -259,10 +255,7 @@ void setup() {
   camName = prefs.getString("cam_name", String(uniqueID, HEX));
   prefs.end();
   Serial.println(psramFound());
-  // Power up the camera (Specific to XIAO S3 Sense)
-  // pinMode(32, OUTPUT);
-  // digitalWrite(32, HIGH);
-  // delay(500);
+
 
   Serial.println("a");
 
@@ -277,9 +270,8 @@ void setup() {
     return;
   }
 
-  // panServo.attach(14); // example GPIO
-  // tiltServo.attach(15);
-  pinMode(13, OUTPUT);
+
+  pinMode(4, OUTPUT);
   setupServos();
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -299,5 +291,14 @@ void setup() {
 
 void loop() {
   ws.loop();
+  if (servosNeedFreeze && (millis() - lastServoCommandTime >= 1000)) {
+    // Writing 4095 forces the PWM wave to become a solid, flat 5V HIGH line 
+    // without disconnecting the internal hardware channels.
+    ledcWrite(PAN_PIN, 4095);
+    ledcWrite(TILT_PIN, 4095);
+
+    servosNeedFreeze = false;
+    Serial.println("Channels paused cleanly via max duty cycle.");
+  }
   delay(1);
 }
