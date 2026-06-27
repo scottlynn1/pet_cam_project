@@ -31,7 +31,7 @@ export class ClientManager {
         }
       }
       delete this.clientsockets[clientID];
-      console.log(`client ws connection with client ID: ${clientID}`)
+      console.log(`client ws connection with client ID: ${clientID} was closed`)
     })
   }
 }
