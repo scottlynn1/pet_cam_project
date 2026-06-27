@@ -1,102 +1,97 @@
-const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-const URL = import.meta.env.PROD ? `${protocol}://${window.location.host}/ws` : `${protocol}://${window.location.hostname}:3000`
+import { wsService } from "./wsService.js";
+import {datafetchService} from "./datafetchService.js";
+import { elms } from "./domElements.js"
 
 // and fix issue with multiple tabs in same browser attempting to control one
 // fix cam_hal cam_hal: FB-OVF
-const El2typ = (obj) => {
-  let str = obj.innerText;
-  obj.innerHTML =
-    "<span class='TxtWrape'></span><span class='typeBar'> </span>";
-  let optDf = [0, 150]; //Start Delay, Typing speed
-  let opt = obj.getAttribute("El2typ").replace(/}|{/gi, "").split(",");
-  opt = { ...optDf, ...opt };
-  obj.removeAttribute("El2typ");
-  setTimeout(() => {
-    for (let i = 0; i < str.length; i++) {
-      setTimeout(() => {
-        obj.querySelector(".TxtWrape").innerHTML += str[i];
-        if (i + 1 === str.length) {
-          obj.querySelector(".typeBar").remove();
-        }
-      }, opt[1] * i);
-    }
-  }, opt[0] *1000);
-};
-const El2typElements = document.querySelectorAll("[El2typ]");
 
-let deviceID = null;
-let ws = null;
-let reconnectTimeout;
-let pingInterval = null;
-let cameralist = document.getElementById("cam-select")
-const feedstopButton = document.getElementById("feed-stop");
-const laserstopButton = document.getElementById("laser-stop");
-const laserstartButton = document.getElementById('laser-start');
-const laserwrapper = document.getElementById('laser-wrapper');
-const controller = document.getElementById("controller");
-const feedsection = document.getElementById("feed-section");
-const controlsection = document.getElementById("control-section");
-const feedframe = document.getElementById("feed");
-const loginForm = document.getElementById('login-form');
-const deviceMenu = document.getElementById('device-menu');
-const formMenu = document.getElementById('form-menu');
-const errorDisplay = document.getElementById('error-message');
-const renameWrapper = document.getElementById('rename-wrapper');
 const camNameInput = document.getElementById('cam-name-input');
 const camNameSave = document.getElementById('cam-name-save');
 const toggleRenameBtn = document.getElementById('toggle-rename-btn');
-const typewriter = document.getElementById('typewriter')
 
+const appState = {
+  isLoggedIn: false,
+  activeFeed: false,
+  laserActive: false,
+  renamingDevice: false,
+  devices: []
+};
 
-function showloginUI() {
-  controlsection.classList.add('hidden');
-  feedsection.classList.add('hidden');
-  deviceMenu.classList.add('hidden');
-  renameWrapper.classList.add('hidden');
-  typewriter.classList.add('removed');
+function renderUI() {
+  elms.menus.form.classList.toggle('hidden', appState.isLoggedIn);
+  elms.menus.device.classList.toggle('hidden', !appState.isLoggedIn);
+  elms.typewriter.classList.toggle('removed', !appState.isLoggedIn);
+
+  elms.feedFrame.classList.toggle('active', appState.activeFeed);
+  elms.sections.feed.classList.toggle('hidden', !appState.activeFeed);
+  elms.sections.control.classList.toggle('hidden', !appState.activeFeed);
+
+  
+  elms.controller.classList.toggle('hidden', !appState.laserActive);
+  elms.laserStart.classList.toggle('hidden', appState.laserActive);
+  elms.laserWrapper.classList.toggle('hidden', appState.laserActive);
+
+  elms.menus.renameWrapper.classList.toggle('hidden', !appState.renamingDevice);
+  elms.toggleRenameBtn.classList.toggle('hidden', appState.renamingDevice);
+}
+
+function logoutActions() {
+  appState.activeFeed = false;
+  appState.laserActive = false;
+  appState.renamingDevice = false;
+  appState.isLoggedIn = false;
+  devices = [];
   feedframe.src = "";
   if (ws && ws.readyState === WebSocket.OPEN) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
+    }
   }
-}
-formMenu.classList.remove('hidden');
-loginForm.reset();
+  loginForm.reset();
+  renderUI();
 }
 
-function showloggedinUI() {
+function loginActions() {
   El2typElements.forEach((singleElm) => {
     El2typ(singleElm);
   });
   loginForm.reset();
-  formMenu.classList.add('hidden');
-  typewriter.classList.remove('removed');
   feedframe.src = "";
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   }
-  deviceMenu.classList.remove('hidden');
-  controlsection.classList.add('hidden');
-  feedsection.classList.add('hidden');
+  appState.isLoggedIn = true;
+  appState.activeFeed = false;
+  appState.renamingDevice = false;
+  appState.laserActive = false;
+  renderUI();
 }
-
-
 
 function getValidToken() {
   let token = localStorage.getItem('jwt_token');
   
   if (!token) {
-    showloginUI();
+    logoutActions();
     return
   }
+
   return token;
 }
 
-loginForm.addEventListener('submit', async (e) => {
+let token = getValidToken();
+if (token) {
+      wsService(token, UpdateUI);
+      let cameras = datafetchService(token);
+      populateCameraList(cameras)
+      appState.isLoggedIn = true;
+      renderUI();
+    }
+
+elms.menus.loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const formData = new FormData(loginForm);
   const payload = Object.fromEntries(formData.entries());
-
+  
   try {
     const response = await fetch('/login', {
       method: 'POST',
@@ -108,119 +103,30 @@ loginForm.addEventListener('submit', async (e) => {
     
     if (data.token) {
       localStorage.setItem('jwt_token', data.token);
-      getData();
+      wsService(token, UpdateUI);
+      const cameras = datafetchService(token);
+      populateCameraList(cameras)
+      appState.isLoggedIn = true;
+      loginActions();
+      renderUI();
     }
   } catch (err) {
     console.error('Login Error:', err.message);  
 
-    if (errorDisplay) {
+    if (elms.errorDisplay) {
       errorDisplay.textContent = err.message;
       errorDisplay.style.color = 'red';
     }
   }
 });
 
-function UpdateUI(event) {
-  const message = JSON.parse(event.data);
-  if (message.type == "confirmation" && message.data == "timeout") {
-    controller.classList.add('hidden')
-    laserstartButton.classList.remove('hidden');
-    laserwrapper.classList.remove('hidden');
-  }
-  if (message.type == "error") {
-    showloginUI();
-  }
-}
 
-function openWs(token) {
-  if (pingInterval) clearInterval(pingInterval);
-  const urlwithtoken = `${URL}?token=${token}`
-  ws = new WebSocket (urlwithtoken);
-  ws.addEventListener('message', UpdateUI);
-  ws.onopen = () => {
-    console.log("connected to server")
-    clearTimeout(reconnectTimeout);
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-        type: "init_conn",
-        role: "client",
-        device: "node_server",
-      }))
-    }
-    pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "ping" }));
-      };
-    }, 30000);
-  }
-  ws.onclose = (event) => {
-    console.log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
-    cleanupSocket();
-  };
-
-  ws.onerror = (error) => {
-    console.error("WebSocket error observed:", error);
-  };
-}
-
-function cleanupSocket() {
-  clearTimeout(reconnectTimeout);
-  if (pingInterval) {
-    clearInterval(pingInterval);
-    pingInterval = null;
-    console.log("Zombie ping interval cleared successfully.");
-  }
-  if (ws) {
-    ws.removeEventListener('message', UpdateUI); // Stops listening to this socket
-    ws.onopen = null;
-    ws.onclose = null;
-    ws.onerror = null;
-    // If it's lingering in a half-open state, shut it down
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-      ws.close();
-    }
-    
-    ws = null;
-    console.log("WebSocket event listeners removed and reference nulled.");
-    const token = getValidToken();
-    if (token) {
-      console.log("Scheduling reconnect in 5 seconds...");
-      reconnectTimeout = setTimeout(() => openWs(token), 5000);
-    } else {
-      console.log("Reconnect aborted: User needs to log in.");
-    }
-  }
-}
-
-async function getData() {
-  console.log('fetching...');
-  const token = await getValidToken();
-  if (!token) {
-    showloginUI();
-    return;
-  }
-  const url = import.meta.env.PROD ? `https://${window.location.host}/device_list?token=${token}` : `http://${window.location.hostname}:3000/device_list?token=${token}`;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error(`Expected JSON but got ${contentType || 'nothing'}. Status: ${response.status}`);
-      }
-      const result = await response.json();
-      if (result.error == "Invalid or expired token.") {
-        showloginUI();
-        return
-      }
-      throw new Error(`Response status: ${response.status}`);
-    }
-    const result = await response.json();
-
+function populateCameraList(cameras) {
     while (cameralist.options.length > 1) {
         cameralist.remove(cameralist.options.length - 1);
     }
 
-    for (let camera of result.data) {
+    for (let camera of cameras) {
       let cam = document.createElement("option")
       cam.value = camera.id
       cam.text = camera.name
@@ -230,47 +136,41 @@ async function getData() {
     if (cameralist) {
       cameralist.addEventListener("change", initiatefeed);
     }
+}
 
-    openWs(token)
-    showloggedinUI();
-  } catch (error) {
-    //need to add actual error handling
-    console.error(error.message);
+function UpdateUI(event) {
+  const message = JSON.parse(event.data);
+  if (message.type == "confirmation" && message.data == "timeout") {
+    appState.laserActive = false
+  }
+  if (message.type == "error") {
+    loginActions();
   }
 }
 
 const initiatefeed = async (event) => {
   deviceID = event.target.value;
-  feedsection.classList.remove('hidden');
-  controlsection.classList.remove('hidden');
-  controller.classList.add('hidden');
+  appState.activeFeed = true;
+  appState.laserActive = false;
   typewriter.classList.add('removed');
   camNameInput.value = event.target.options[event.target.selectedIndex].text;
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   }
   let token = await getValidToken();
-  feedframe.classList.remove('active');
-  laserwrapper.classList.remove('hidden');
-  laserstartButton.classList.remove('hidden');
-  toggleRenameBtn.classList.remove('hidden');
   feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&token=${token}`);
 }
 
 
 feedstopButton.addEventListener("click", () => {
   feedframe.setAttribute("src", "");
-  feedframe.classList.remove('active');
   document.getElementById('default-select').selected = true;
-  controller.classList.add('hidden');
-  laserstartButton.classList.add('hidden');
-  laserwrapper.classList.add('hidden');
-  feedsection.classList.add('hidden');
-  renameWrapper.classList.add('hidden');
-  toggleRenameBtn.classList.add('hidden');
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   }
+  appState.laserActive = false;
+  appState.activeFeed = false;
+  appState.renamingDevice = false;
   deviceID = null;
 });
 
@@ -279,9 +179,7 @@ const stopLaserAction = () => {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
   }
-    controller.classList.add('hidden');
-  laserstartButton.classList.remove('hidden');
-  laserwrapper.classList.remove('hidden');
+  appState.laserActive = false;
 }
 
 laserstopButton.addEventListener("click", stopLaserAction);
@@ -292,12 +190,9 @@ laserstartButton.addEventListener("click", async (e) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: deviceID, hubID: 123}));
       const response = await waitForNextMessage(ws);
-      console.log(response)
       if (response.data == "fail") window.alert("laser already being controllerled");
       else if (response.data == "success") {
-        laserstartButton.classList.add('hidden');
-        laserwrapper.classList.add('hidden');
-        controller.classList.remove('hidden');
+        appState.laserActive = true;
       }
     } else {
       console.err(err);
@@ -339,7 +234,8 @@ feedframe.onload = () => {
 };
 
 toggleRenameBtn.addEventListener("click", () => {
-  renameWrapper.classList.toggle("hidden");
+  if (appState.renamingDevice == false) appState.renamingDevice = true;
+  else appState.renamingDevice = false;
 })
 
 
@@ -352,10 +248,9 @@ camNameSave.addEventListener("click", () => {
   const select = document.getElementById("cam-select");
   const selected = select.options[select.selectedIndex];
   if (selected) selected.text = newName;
-  renameWrapper.classList.add("hidden");
+  appState.renamingDevice = false;
 });
 
-getData();
 
 let lastSendTime = 0;
 const throttleMS = 50;
@@ -366,7 +261,7 @@ const threshold = 0.02;
 function sendServoData(y, x) {
   const now = Date.now();
   const hasMovedEnough = Math.abs(x - lastSentX) > threshold || Math.abs(y - lastSentY) > threshold;
-
+  
   if (now - lastSendTime > throttleMS && hasMovedEnough) {
     x = 90 - Math.round(x*90)
     y = Math.round(y*90)
@@ -410,4 +305,24 @@ controller.addEventListener("touchend", (e) => {
   sendServoData(x, y)
 })
 
+const El2typ = (obj) => {
+  let str = obj.innerText;
+  obj.innerHTML =
+    "<span class='TxtWrape'></span><span class='typeBar'> </span>";
+  let optDf = [0, 150]; //Start Delay, Typing speed
+  let opt = obj.getAttribute("El2typ").replace(/}|{/gi, "").split(",");
+  opt = { ...optDf, ...opt };
+  obj.removeAttribute("El2typ");
+  setTimeout(() => {
+    for (let i = 0; i < str.length; i++) {
+      setTimeout(() => {
+        obj.querySelector(".TxtWrape").innerHTML += str[i];
+        if (i + 1 === str.length) {
+          obj.querySelector(".typeBar").remove();
+        }
+      }, opt[1] * i);
+    }
+  }, opt[0] *1000);
+};
+const El2typElements = document.querySelectorAll("[El2typ]");
 

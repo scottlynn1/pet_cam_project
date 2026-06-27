@@ -1,6 +1,6 @@
-import { WS_URL } from './config.js';
+import { API_URL } from './config.js';
 
-export async function fetchDeviceList(token) {
+export async function datafetchService(token) {
   const url = `${API_URL}/device_list?token=${token}`;
   
   const response = await fetch(url);
@@ -22,5 +22,5 @@ export async function fetchDeviceList(token) {
   }
 
   const result = await response.json();
-  return result.data; // Return just the raw array of cameras/devices
+  return result.data;
 }
