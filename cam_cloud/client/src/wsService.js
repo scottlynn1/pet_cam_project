@@ -5,14 +5,9 @@ export const wsService = {
   instance: null,
   pingInterval: null,
   reconnectTimeout: null,
-  currentToken: null,
   onMessageCallback: null,
 
-  open(token, onMessageReceived) {
-    if (!token) {
-      console.warn("WebSocket connection aborted: No valid token provided.");
-      return;
-    }
+  open(onMessageReceived) {
 
     // Save references for potential automatic reconnections
     this.currentToken = token;
@@ -21,7 +16,7 @@ export const wsService = {
     // Clear any pending triggers
     this.clearTimers();
 
-    this.instance = new WebSocket(`${WS_URL}?token=${token}`);
+    this.instance = new WebSocket(`${WS_URL}`);
 
     if (this.onMessageCallback) {
       this.instance.addEventListener('message', this.onMessageCallback);

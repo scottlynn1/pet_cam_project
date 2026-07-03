@@ -40,6 +40,7 @@ function logoutActions() {
   appState.laserActive = false;
   appState.renamingDevice = false;
   appState.isLoggedIn = false;
+  localStorage.removeItem('jwt_token');
   devices = [];
   feedframe.src = "";
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -80,12 +81,12 @@ function getValidToken() {
 
 let token = getValidToken();
 if (token) {
-      wsService(token, UpdateUI);
-      let cameras = datafetchService(token);
-      populateCameraList(cameras)
-      appState.isLoggedIn = true;
-      renderUI();
-    }
+  wsService(token, handleWsMessage);
+  let cameras = datafetchService(token);
+  populateCameraList(cameras)
+  appState.isLoggedIn = true;
+  renderUI();
+}
 
 elms.menus.loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -99,17 +100,17 @@ elms.menus.loginForm.addEventListener('submit', async (e) => {
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
-    
-    if (data.token) {
-      localStorage.setItem('jwt_token', data.token);
-      wsService(token, UpdateUI);
-      const cameras = datafetchService(token);
-      populateCameraList(cameras)
-      appState.isLoggedIn = true;
-      loginActions();
-      renderUI();
+    if (!response.ok) {
+      throw Error(response.json().error);
     }
+
+    wsService(token, handleWsMessage);
+    const cameras = datafetchService(token);
+    populateCameraList(cameras)
+    appState.isLoggedIn = true;
+    loginActions();
+    renderUI();
+
   } catch (err) {
     console.error('Login Error:', err.message);  
 
@@ -122,29 +123,29 @@ elms.menus.loginForm.addEventListener('submit', async (e) => {
 
 
 function populateCameraList(cameras) {
-    while (cameralist.options.length > 1) {
-        cameralist.remove(cameralist.options.length - 1);
-    }
+  while (cameralist.options.length > 1) {
+      cameralist.remove(cameralist.options.length - 1);
+  }
 
-    for (let camera of cameras) {
-      let cam = document.createElement("option")
-      cam.value = camera.id
-      cam.text = camera.name
-      cameralist.appendChild(cam)
-    }
+  for (let camera of cameras) {
+    let cam = document.createElement("option")
+    cam.value = camera.id
+    cam.text = camera.name
+    cameralist.appendChild(cam)
+  }
 
-    if (cameralist) {
-      cameralist.addEventListener("change", initiatefeed);
-    }
+  if (cameralist) {
+    cameralist.addEventListener("change", initiatefeed);
+  }
 }
 
-function UpdateUI(event) {
+function handleWsMessage(event) {
   const message = JSON.parse(event.data);
   if (message.type == "confirmation" && message.data == "timeout") {
     appState.laserActive = false
   }
   if (message.type == "error") {
-    loginActions();
+    logoutActions();
   }
 }
 

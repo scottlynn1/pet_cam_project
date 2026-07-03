@@ -49,7 +49,29 @@ const loginLimiter = rateLimit({
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ noServer: true });
+
+// Intercept the HTTP Upgrade request before it becomes a WebSocket
+server.on('upgrade', (request, socket, head) => {
+    // Extract cookies from the handshake headers
+    const cookies = cookie.parse(request.headers.cookie || '');
+    const token = cookies.auth_token;
+
+    if (!token || !isValidToken(token)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+    }
+
+    // Complete the upgrade if valid
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
+});
+
+wss.on('connection', (ws, request) => {
+    console.log("Secure WebSocket connection established!");
+});
 
 const hubmanager = new HubManager();
 const clientmanager = new ClientManager(hubmanager);
@@ -81,8 +103,16 @@ app.post('/login', loginLimiter, async (req, res) => {
     };
     
     const token = jwt.sign( payload, JWT_SECRET, { expiresIn: '6h' });
+
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+        maxAge: 1 * 60 * 60 * 1000,
+        path: '/'
+    });
     
-    res.json({ token });
+    res.json({ success: true });
   } catch (err) {
     console.log(`database error: ${err}`)
     return res.status(500).json({ error: err})
