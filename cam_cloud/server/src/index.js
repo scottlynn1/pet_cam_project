@@ -8,10 +8,13 @@ import jwt from 'jsonwebtoken';
 import { HubManager } from './managers/HubManager.js';
 import { ClientManager } from './managers/ClientManager.js';
 import { StreamManager } from './managers/StreamManager.js';
-import { authenticateToken, verifyToken } from './middleware/auth.js';
+import { authenticateToken, isValidToken } from './middleware/auth.js';
 import db, { seedDatabase } from './db/database.js';
 import { v4 } from 'uuid';
 import { rateLimit } from 'express-rate-limit';
+import { cookie } from 'cookie'
+import cookieParser from 'cookie-parser';
+
 
 // set up development or production env vars
 const env = process.env.NODE_ENV || 'development';
@@ -27,11 +30,13 @@ await seedDatabase().catch(err => {
 });
 // initialize express app, ws server, and middleware
 const app = express();
+app.use(cookieParser());
 app.use(express.json());
 app.use(cors({
   origin: ['http://localhost:5173', 'https://project4.scottlynn.live'],
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 const loginLimiter = rateLimit({
@@ -53,25 +58,87 @@ const wss = new WebSocketServer({ noServer: true });
 
 // Intercept the HTTP Upgrade request before it becomes a WebSocket
 server.on('upgrade', (request, socket, head) => {
-    // Extract cookies from the handshake headers
-    const cookies = cookie.parse(request.headers.cookie || '');
-    const token = cookies.auth_token;
+  // Extract cookies from the handshake headers
+  const headers = request.headers;
 
-    if (!token || !isValidToken(token)) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        socket.destroy();
-        return;
+
+  const cookies = cookie.parse(headers.cookie || '');
+  const clientToken = cookies?.auth_token;
+  const hubApiKey = headers['x-hub-api-key'];
+
+  let isAuthenticated = false;
+  let connectionType = null;
+
+  if (clientToken) {
+    try {
+      const decoded = isValidToken(clientToken);
+      request.decodedKey = decoded
+      connectionType = "client"
+    } catch (err) {
+      console.log("WebSocket Upgrade rejected: Client token was invalid or expired.");
     }
+  } else if (hubApiKey && isValidHubKey(hubApiKey)) {
+    isAuthenticated = true;
+    connectionType = "hub"
+  }
+  if (!isAuthenticated) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
 
-    // Complete the upgrade if valid
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-    });
+  request.connectionType = connectionType;
+  
+  // Complete the upgrade if valid
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
 });
 
-wss.on('connection', (ws, request) => {
-    console.log("Secure WebSocket connection established!");
-});
+wss.on('connection', async (ws, req) => {
+  ws.once('message', async (message) => {
+    try {
+      const msg = JSON.parse(message);
+      console.log(`Connection initiated with message of type: ${msg.type} recieved`)
+      if (req.connectionType == "hub") {
+        if (msg.type = "init_conn") {
+          if (hubmanager.hubs[msg.hubID]) {
+            hubmanager.hubs[msg.hubID].socket.close();
+          }
+          hubmanager.add_socket(ws, msg.hubID, msg.devices);
+        } else if (msg.type = "init_stream") {
+          const resolve = streammanager.pendingstreams[msg.socket_id];
+          if (resolve) {
+            resolve(ws);
+          } else {
+            console.error ("No pending stream for", msg.clientID);
+          }
+        }
+      } else if (req.connectionType == "client") {
+        try {
+          const decoded = req.decodedKey;
+          const clientID = decoded.client_id;
+          const hub = decoded.hub;
+          console.log(`Verified JWT connection for client: ${clientID}`);
+          clientmanager.add_client(ws, hub, clientID)
+        } catch (err) {
+          if (err.name === 'TokenExpiredError') {
+            console.error('User needs to log in again: Token expired.');
+            ws.send(JSON.stringify({ type: 'error', error: err.name }));
+          } else if (err.name === 'JsonWebTokenError') {
+            console.error('Security alert: Invalid token format or signature.');
+            ws.send(JSON.stringify({ type: 'error', error: err.name }));
+          } else {
+            console.error('Auth Error:', err.message);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to parse first message:', err);
+    }
+  });
+})
+
 
 const hubmanager = new HubManager();
 const clientmanager = new ClientManager(hubmanager);
@@ -159,58 +226,6 @@ app.get("/stream", authenticateToken, async (req, res) => {
 
 
 
-wss.on('connection', async (ws, req) => {
-  ws.once('message', async (message) => {
-    try {
-      const msg = JSON.parse(message);
-      console.log(`Connection initiated with message of type: ${msg.type} recieved`)
-      if (msg.type == "init_conn") {
-        if (msg.role == "py_server") {
-          if (hubmanager.hubs[msg.hubID]) {
-            hubmanager.hubs[msg.hubID].socket.close();
-          }
-          hubmanager.add_socket(ws, msg.hubID, msg.devices);
-        } else if (msg.role == "client") {
-          try {
-            const url = new URL(req.url, `https://${req.headers.host}`);
-            const token = url.searchParams.get('token');
-            
-            if (!token) throw new Error("No token provided");
-            const decoded = await verifyToken(token);
-            const clientID = decoded.client_id;
-            const hub = decoded.hub;
-            
-            console.log(`Verified JWT connection for client: ${clientID}`);
-            clientmanager.add_client(ws, hub, clientID)
-          } catch (err) {
-            if (err.name === 'TokenExpiredError') {
-              console.error('User needs to log in again: Token expired.');
-              ws.send(JSON.stringify({ type: 'error', error: err.name }));
-            } else if (err.name === 'JsonWebTokenError') {
-              console.error('Security alert: Invalid token format or signature.');
-              ws.send(JSON.stringify({ type: 'error', error: err.name }));
-            } else {
-              console.error('Auth Error:', err.message);
-            }
-            ws.close();
-            return
-          }
-        }
-      } else if (msg.type == "init_stream") {
-        const resolve = streammanager.pendingstreams[msg.socket_id];
-        if (resolve) {
-          resolve(ws);
-        } else {
-          console.error ("No pending stream for", msg.clientID);
-        }
-      } else {
-        console.error("first message on websocket not of type 'init_conn' or 'init_stream'")
-      }
-    } catch (err) {
-      console.error('Failed to parse first message:', err);
-    }
-  });
-})
 
 
 server.listen(PORT, () => console.log(`Cloud relay running on port:${PORT}`));

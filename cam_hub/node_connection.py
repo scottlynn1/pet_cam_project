@@ -12,8 +12,11 @@ class NodeConnection:
 
     async def connect(self, uri):
         while True:
+            extra_headers = {
+                "X-Hub-API-Key": "super_secret_hub_token_abc123"
+            }
             try:
-                async with websockets.connect(uri) as ws:
+                async with websockets.connect(uri, extra_headers=extra_headers) as ws:
                     self.ws = ws
                     self.device_manager.comm_socket = ws
                     print(f"connecting to node server")
