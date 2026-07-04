@@ -13,7 +13,7 @@ export const isValidToken = (token) => {
     jwt.verify(token, JWT_SECRET)
 };
 
-// for auth on all other routes as middleware
+// auth for clients
 export const authenticateToken = (req, res, next) => {
   const token = req.cookies.auth_token;
   if (!token) {
@@ -27,11 +27,13 @@ export const authenticateToken = (req, res, next) => {
     
     next();
   } catch (err) {
-    console.log("Invalid or expired token.")
+    console.log(err)
     res.status(403).json({ error: "Invalid or expired token." });
   }
 };
 
+
+// auth for hub servers
 export const isValidHubKey = (incomingKey) => {    
     if (!incomingKey) return false;
     

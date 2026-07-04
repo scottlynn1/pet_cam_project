@@ -1,5 +1,5 @@
 export const els = {
-  camSelect: document.getElementById("cam-select"),
+  camList: document.getElementById("cam-select"),
   feedStop: document.getElementById("feed-stop"),
   laserStop: document.getElementById("laser-stop"),
   laserStart: document.getElementById('laser-start'),
@@ -8,6 +8,9 @@ export const els = {
   feedFrame: document.getElementById("feed"),
   laserWrapper: document.getElementById('laser-wrapper'),
   typewriter: document.getElementById('typewriter'),
+  camNameSave: document.getElementById('cam-name-save'),
+  camNameInput: document.getElementById('cam-name-input'),
+
   sections: {
     feed: document.getElementById("feed-section"),
     control: document.getElementById("control-section"),

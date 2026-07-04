@@ -1,4 +1,3 @@
-// src/services/wsService.js
 import { WS_URL } from '../config.js';
 
 export const wsService = {
@@ -11,15 +10,13 @@ export const wsService = {
 
     this.onMessageCallback = onMessageReceived;
 
-    // Clear any pending triggers
     this.clearTimers();
 
     this.instance = new WebSocket(`${WS_URL}`);
-
     if (this.onMessageCallback) {
       this.instance.addEventListener('message', this.onMessageCallback);
     }
-
+    
     this.instance.onopen = () => {
       console.log("Connected to server");
       this.send({
@@ -27,23 +24,24 @@ export const wsService = {
         role: "client",
         device: "node_server",
       });
-
+      
       // Start keep-alive ping loop
       this.pingInterval = setInterval(() => {
         this.send({ type: "ping" });
       }, 30000);
+      
     };
-
-    // Notice we use arrow functions here so 'this' still points to wsService!
+    
+    this.instance.onerror = (error) => {
+      console.error("WebSocket error observed:", error);
+    };
+    
     this.instance.onclose = (event) => {
       console.log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
       this.cleanupAndScheduleReconnect();
     };
 
-    this.instance.onerror = (error) => {
-      console.error("WebSocket error observed:", error);
-      this.cleanupAndScheduleReconnect();
-    };
+    return this.instance;
   },
 
   send(dataObj) {
@@ -59,8 +57,7 @@ export const wsService = {
     this.reconnectTimeout = null;
   },
 
-  cleanupAndScheduleReconnect() {
-
+  async cleanupAndScheduleReconnect() {
     if (!this.instance) return;
     this.clearTimers();
 
@@ -79,21 +76,27 @@ export const wsService = {
       this.instance = null;
       console.log("WebSocket reference cleaned up.");
     }
+    try {
+      const response = await fetch('auth_status');
+      if (!response.ok) {
+        const forceLogout = new CustomEvent("forceLogout");
+        window.dispatchEvent(forceLogout);
+        return;
+      }
+  
+      if (!this.instance) {
+        console.log("Scheduling reconnect in 5 seconds...");
+        this.reconnectTimeout = setTimeout(() => {
+          this.open(this.onMessageCallback);
+        }, 5000);
+      }
+    } catch (err) {
 
-    // Attempt reconnection using the saved parameters
-    if (this.currentToken) {
-      console.log("Scheduling reconnect in 5 seconds...");
+      console.error("Auth status check failed (Server offline?). Retrying connection...", err);
+      
       this.reconnectTimeout = setTimeout(() => {
-        this.open(this.currentToken, this.onMessageCallback);
+        this.open(this.onMessageCallback);
       }, 5000);
-    } else {
-      console.log("Reconnect aborted: No active session token found.");
     }
   },
-  
-  // Force a manual logout/disconnect
-  disconnect() {
-    this.currentToken = null; // Clear token so it doesn't auto-reconnect
-    this.cleanupAndScheduleReconnect();
-  }
 };

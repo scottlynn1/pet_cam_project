@@ -123,15 +123,8 @@ wss.on('connection', async (ws, req) => {
           console.log(`Verified JWT connection for client: ${clientID}`);
           clientmanager.add_client(ws, hub, clientID)
         } catch (err) {
-          if (err.name === 'TokenExpiredError') {
-            console.error('User needs to log in again: Token expired.');
-            ws.send(JSON.stringify({ type: 'error', error: err.name }));
-          } else if (err.name === 'JsonWebTokenError') {
-            console.error('Security alert: Invalid token format or signature.');
-            ws.send(JSON.stringify({ type: 'error', error: err.name }));
-          } else {
-            console.error('Auth Error:', err.message);
-          }
+          console.error(err.message);
+          ws.send(JSON.stringify({ type: 'error', error: err.message }));
         }
       }
     } catch (err) {
@@ -186,6 +179,10 @@ app.post('/login', loginLimiter, async (req, res) => {
     return res.status(500).json({ error: err})
   }
 });
+
+app.get("/auth_status", authenticateToken, (req, res) => {
+  res.json({ loggedIn: true });
+})
 
 app.get("/device_list", authenticateToken, (req, res) => {
   try {

@@ -1,36 +1,35 @@
 import { wsService } from "./wsService.js";
 import {datafetchService} from "./datafetchService.js";
 import { elms } from "./domElements.js"
+import { servoController } from './servoController.js';
 
 // and fix issue with multiple tabs in same browser attempting to control one
 // fix cam_hal cam_hal: FB-OVF
-
-const camNameInput = document.getElementById('cam-name-input');
-const camNameSave = document.getElementById('cam-name-save');
-const toggleRenameBtn = document.getElementById('toggle-rename-btn');
 
 const appState = {
   isLoggedIn: false,
   activeFeed: false,
   laserActive: false,
   renamingDevice: false,
-  devices: []
+  devices: [],
+  deviceID: null
 };
 
 function renderUI() {
   elms.menus.form.classList.toggle('hidden', appState.isLoggedIn);
   elms.menus.device.classList.toggle('hidden', !appState.isLoggedIn);
   elms.typewriter.classList.toggle('removed', !appState.isLoggedIn);
-
+  
   elms.feedFrame.classList.toggle('active', appState.activeFeed);
   elms.sections.feed.classList.toggle('hidden', !appState.activeFeed);
   elms.sections.control.classList.toggle('hidden', !appState.activeFeed);
-
+  if (!appState.activeFeed) elms.feedFrame.src = "";
+  
   
   elms.controller.classList.toggle('hidden', !appState.laserActive);
   elms.laserStart.classList.toggle('hidden', appState.laserActive);
   elms.laserWrapper.classList.toggle('hidden', appState.laserActive);
-
+  
   elms.menus.renameWrapper.classList.toggle('hidden', !appState.renamingDevice);
   elms.toggleRenameBtn.classList.toggle('hidden', appState.renamingDevice);
 }
@@ -40,14 +39,9 @@ function logoutActions() {
   appState.laserActive = false;
   appState.renamingDevice = false;
   appState.isLoggedIn = false;
-  localStorage.removeItem('jwt_token');
-  devices = [];
-  feedframe.src = "";
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-    }
-  }
+  appState.devices = [];
+  populateCameraList(appState.devices);
+  wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
   loginForm.reset();
   renderUI();
 }
@@ -57,26 +51,26 @@ function loginActions() {
     El2typ(singleElm);
   });
   loginForm.reset();
-  feedframe.src = "";
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  }
   appState.isLoggedIn = true;
   appState.activeFeed = false;
   appState.renamingDevice = false;
   appState.laserActive = false;
+  ws = wsService.open(handleWsMessage);
+  appState.devices = datafetchService();
+  populateCameraList(appState.devices)
+    wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
   renderUI();
 }
 
-
-let token = getValidToken();
-if (token) {
-  wsService(token, handleWsMessage);
-  let cameras = datafetchService(token);
-  populateCameraList(cameras)
-  appState.isLoggedIn = true;
-  renderUI();
+async function checkStatus () {
+  const response = await fetch('/auth_status')
+  if (!response.ok) {
+    logoutActions();
+  } else if (response.ok) {
+    loginActions();
+  }
 }
+checkStatus();
 
 elms.menus.loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -89,21 +83,16 @@ elms.menus.loginForm.addEventListener('submit', async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-
+    
     if (!response.ok) {
       throw Error(response.json().error);
     }
-
-    wsService(token, handleWsMessage);
-    const cameras = datafetchService(token);
-    populateCameraList(cameras)
-    appState.isLoggedIn = true;
+    
     loginActions();
-    renderUI();
-
+    
   } catch (err) {
     console.error('Login Error:', err.message);  
-
+    
     if (elms.errorDisplay) {
       errorDisplay.textContent = err.message;
       errorDisplay.style.color = 'red';
@@ -113,81 +102,70 @@ elms.menus.loginForm.addEventListener('submit', async (e) => {
 
 
 function populateCameraList(cameras) {
-  while (cameralist.options.length > 1) {
-      cameralist.remove(cameralist.options.length - 1);
+  while (elms.camList.options.length > 1) {
+    elms.camList.remove(elms.camList.options.length - 1);
   }
-
+  
   for (let camera of cameras) {
     let cam = document.createElement("option")
     cam.value = camera.id
     cam.text = camera.name
-    cameralist.appendChild(cam)
-  }
-
-  if (cameralist) {
-    cameralist.addEventListener("change", initiatefeed);
+    elms.camList.appendChild(cam)
   }
 }
+
+window.addEventListener("forceLogout", (event) => {
+  logoutActions
+});
 
 function handleWsMessage(event) {
   const message = JSON.parse(event.data);
   if (message.type == "confirmation" && message.data == "timeout") {
     appState.laserActive = false
+    renderUI();
   }
   if (message.type == "error") {
     logoutActions();
   }
 }
 
-const initiatefeed = async (event) => {
-  deviceID = event.target.value;
+elms.camList.addEventListener('change', async (event) => {
+  appState.deviceID = event.target.value;
   appState.activeFeed = true;
   appState.laserActive = false;
-  typewriter.classList.add('removed');
-  camNameInput.value = event.target.options[event.target.selectedIndex].text;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  }
-  let token = await getValidToken();
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${deviceID}&token=${token}`);
-}
+  elms.typewriter.classList.add('removed');
+  elms.camNameInput.value = event.target.options[event.target.selectedIndex].text;
+  wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
+  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${appState.deviceID}`);
+});
 
 
-feedstopButton.addEventListener("click", () => {
+elms.feedStop.addEventListener("click", () => {
   feedframe.setAttribute("src", "");
   document.getElementById('default-select').selected = true;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  }
+  wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
   appState.laserActive = false;
   appState.activeFeed = false;
   appState.renamingDevice = false;
-  deviceID = null;
+  appState.deviceID = null;
 });
 
 const stopLaserAction = () => {
   console.log('Laser stop button clicked on click event');
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "off", device: deviceID, hubID: 123}));
-  }
+  wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
   appState.laserActive = false;
 }
 
-laserstopButton.addEventListener("click", stopLaserAction);
-laserstopButton.addEventListener("touchend", stopLaserAction);
+elms.laserStop.addEventListener("click", stopLaserAction);
+elms.laserStop.addEventListener("touchend", stopLaserAction);
 
-laserstartButton.addEventListener("click", async (e) => {
+elms.laserStart.addEventListener("click", async (e) => {
   try {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "laser_cmd", role: "client", data: "on", device: deviceID, hubID: 123}));
-      const response = await waitForNextMessage(ws);
-      if (response.data == "fail") window.alert("laser already being controllerled");
-      else if (response.data == "success") {
-        appState.laserActive = true;
-      }
-    } else {
-      console.err(err);
-      window.alert("Websocket for device is stale, refresh page");
+    wsService.send({ type: "laser_cmd", role: "client", data: "on", device: appState.deviceID, hubID: 123});
+    const response = await waitForNextMessage(ws);
+    if (response.data == "fail") window.alert("laser already being controllerled");
+    else if (response.data == "success") {
+      appState.laserActive = true;
     }
   } catch (err) {
     console.error(err);
@@ -218,83 +196,38 @@ function waitForNextMessage(ws, timeout = 5000) {
   })
 }
 
-feedframe.onload = () => {
+elms.feedFrame.onload = () => {
   setTimeout(() => {
     feedframe.classList.add('active');
   }, 300); // small intentional delay for effect
 };
 
-toggleRenameBtn.addEventListener("click", () => {
+elms.renameToggleBtn.addEventListener("click", () => {
   if (appState.renamingDevice == false) appState.renamingDevice = true;
   else appState.renamingDevice = false;
 })
 
 
-camNameSave.addEventListener("click", () => {
-  const newName = camNameInput.value.trim();
-  if (!newName || !deviceID) return;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "set_cam_name", device: deviceID, name: newName }));
-  }
+elms.camNameSave.addEventListener("click", () => {
+  elms.camNameInput.value.trim();
+  if (!newName || !appState.deviceID) return;
+  wsService.send({ type: "set_cam_name", device: appState.deviceID, name: newName });
   const select = document.getElementById("cam-select");
   const selected = select.options[select.selectedIndex];
   if (selected) selected.text = newName;
   appState.renamingDevice = false;
 });
 
+servoController.init(elms.controller);
 
-let lastSendTime = 0;
-const throttleMS = 50;
-let lastSentX = -1;
-let lastSentY = -1;
-const threshold = 0.02;
-
-function sendServoData(y, x) {
-  const now = Date.now();
-  const hasMovedEnough = Math.abs(x - lastSentX) > threshold || Math.abs(y - lastSentY) > threshold;
-  
-  if (now - lastSendTime > throttleMS && hasMovedEnough) {
-    x = 90 - Math.round(x*90)
-    y = Math.round(y*90)
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ 
-      type: "servo_cmd", 
-      role: "client", 
-      data: { x, y }, 
-      device: deviceID
-    }))
-  }
-    lastSentX = x;
-    lastSentY = y;
-    lastSendTime = now;
-  }
-}
-
-controller.addEventListener("touchstart", e => {
-  e.preventDefault();
-  let rect = controller.getBoundingClientRect();
-  let x = (e.touches[0].clientX - rect.left) / rect.width;
-  let y = (e.touches[0].clientY - rect.top) / rect.height;
-  sendServoData(x, y);
-})
-
-controller.addEventListener("touchmove", e => {
-  e.preventDefault();
-  let rect = controller.getBoundingClientRect();
-  [...e.touches].forEach(touch => {
-    let x = (touch.clientX - rect.left) / rect.width;
-    let y = (touch.clientY - rect.top) / rect.height;
-    sendServoData(x, y)
-  })
-})
-
-controller.addEventListener("touchend", (e) => {
-  e.preventDefault();
-  let rect = controller.getBoundingClientRect();
-  let x = (e.changedTouches[0].clientX - rect.left) / rect.width;
-  let y = (e.changedTouches[0].clientY - rect.top) / rect.height;
-  sendServoData(x, y)
-})
+servoController.onServoMove((x, y) => {
+  wsService.send({ 
+    type: "servo_cmd", 
+    role: "client", 
+    data: { x, y }, 
+    device: appState.deviceID
+  });
+});
 
 const El2typ = (obj) => {
   let str = obj.innerText;
