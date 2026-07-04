@@ -9,8 +9,6 @@ export const wsService = {
 
   open(onMessageReceived) {
 
-    // Save references for potential automatic reconnections
-    this.currentToken = token;
     this.onMessageCallback = onMessageReceived;
 
     // Clear any pending triggers

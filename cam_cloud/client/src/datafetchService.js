@@ -1,7 +1,7 @@
 import { API_URL } from './config.js';
 
-export async function datafetchService(token) {
-  const url = `${API_URL}/device_list?token=${token}`;
+export async function datafetchService() {
+  const url = `${API_URL}/device_list`;
   
   const response = await fetch(url);
   

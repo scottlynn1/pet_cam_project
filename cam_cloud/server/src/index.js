@@ -17,10 +17,11 @@ import cookieParser from 'cookie-parser';
 
 
 // set up development or production env vars
-const env = process.env.NODE_ENV || 'development';
-dotenv.config({
-  path: `.env.${env}`,
-});
+if (!process.env.NODE_ENV) {
+  dotenv.config({
+    path: `.env.development`,
+  });
+}
 const PORT = parseInt(process.env.PORT);
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error("FATAL: JWT_SECRET not found");

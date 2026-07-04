@@ -68,16 +68,6 @@ function loginActions() {
   renderUI();
 }
 
-function getValidToken() {
-  let token = localStorage.getItem('jwt_token');
-  
-  if (!token) {
-    logoutActions();
-    return
-  }
-
-  return token;
-}
 
 let token = getValidToken();
 if (token) {
