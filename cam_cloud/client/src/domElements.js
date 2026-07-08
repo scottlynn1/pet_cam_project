@@ -1,4 +1,4 @@
-export const els = {
+export const elms = {
   camList: document.getElementById("cam-select"),
   feedStop: document.getElementById("feed-stop"),
   laserStop: document.getElementById("laser-stop"),

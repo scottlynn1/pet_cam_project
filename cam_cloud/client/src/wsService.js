@@ -41,7 +41,6 @@ export const wsService = {
       this.cleanupAndScheduleReconnect();
     };
 
-    return this.instance;
   },
 
   send(dataObj) {

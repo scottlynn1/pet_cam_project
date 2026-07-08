@@ -1,7 +1,7 @@
 import { wsService } from "./wsService.js";
-import {datafetchService} from "./datafetchService.js";
 import { elms } from "./domElements.js"
 import { servoController } from './servoController.js';
+import { isLoggedIn, logoutActions, loginAttemptEvent, loginActions } from "./session.js";
 
 // and fix issue with multiple tabs in same browser attempting to control one
 // fix cam_hal cam_hal: FB-OVF
@@ -12,7 +12,10 @@ const appState = {
   laserActive: false,
   renamingDevice: false,
   devices: [],
-  deviceID: null
+  deviceID: null,
+  loginError: false,
+  errorContent: '',
+  feedSource: '',
 };
 
 function renderUI() {
@@ -24,6 +27,7 @@ function renderUI() {
   elms.sections.feed.classList.toggle('hidden', !appState.activeFeed);
   elms.sections.control.classList.toggle('hidden', !appState.activeFeed);
   if (!appState.activeFeed) elms.feedFrame.src = "";
+  if (appState.activeFeed) elms.typewriter.classList.add('removed');
   
   
   elms.controller.classList.toggle('hidden', !appState.laserActive);
@@ -32,78 +36,49 @@ function renderUI() {
   
   elms.menus.renameWrapper.classList.toggle('hidden', !appState.renamingDevice);
   elms.toggleRenameBtn.classList.toggle('hidden', appState.renamingDevice);
-}
 
-function logoutActions() {
-  appState.activeFeed = false;
-  appState.laserActive = false;
-  appState.renamingDevice = false;
-  appState.isLoggedIn = false;
-  appState.devices = [];
+  elms.errorDisplay.textContent = appState.loginError ? err.message : '';
+  elms.errorDisplay.style.color = appState.loginError ? 'red' : 'white';
+
   populateCameraList(appState.devices);
-  wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
-  loginForm.reset();
-  renderUI();
+
+  if (appState.isLoggedIn) elms.loginForm.reset();
 }
 
-function loginActions() {
-  El2typElements.forEach((singleElm) => {
-    El2typ(singleElm);
-  });
-  loginForm.reset();
-  appState.isLoggedIn = true;
-  appState.activeFeed = false;
-  appState.renamingDevice = false;
-  appState.laserActive = false;
-  ws = wsService.open(handleWsMessage);
-  appState.devices = datafetchService();
-  populateCameraList(appState.devices)
-    wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
-  renderUI();
-}
-
-async function checkStatus () {
-  const response = await fetch('/auth_status')
-  if (!response.ok) {
-    logoutActions();
-  } else if (response.ok) {
-    loginActions();
+function sendLaserOffCmd(e) {
+  if (e.detail.deviceID) {
+    wsService.send({ type: "laser_cmd", role: "client", data: "off", device: e.detail.deviceID, hubID: 123});
+    appState.deviceID = null;
   }
 }
-checkStatus();
 
-elms.menus.loginForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const formData = new FormData(loginForm);
-  const payload = Object.fromEntries(formData.entries());
-  
-  try {
-    const response = await fetch('/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    
-    if (!response.ok) {
-      throw Error(response.json().error);
-    }
-    
-    loginActions();
-    
-  } catch (err) {
-    console.error('Login Error:', err.message);  
-    
-    if (elms.errorDisplay) {
-      errorDisplay.textContent = err.message;
-      errorDisplay.style.color = 'red';
-    }
-  }
+window.addEventListener('app:logout', sendLaserOffCmd);
+window.addEventListener('device:switch', sendLaserOffCmd);
+window.addEventListener('feed:stop', sendLaserOffCmd);
+window.addEventListener('laser:stop', sendLaserOffCmd);
+window.addEventListener('user:login', wsService.open(handleWsMessage));
+window.addEventListener('user:login', () => {
+  elms.typewriter.forEach((singleLetter) => {
+    typeLetter(singleLetter);
+  })
+})
+window.addEventListener("forceLogout", (event) => {
+  logoutActions();
+});
+
+
+isLoggedIn().then((loggedIn) => {
+  loggedIn ? loginActions(login) : logoutActions(appState, renderUI);
+})
+
+elms.menus.loginForm.addEventListener('submit', e => {
+  loginAttemptEvent(e, appState, renderUI);
 });
 
 
 function populateCameraList(cameras) {
-  while (elms.camList.options.length > 1) {
-    elms.camList.remove(elms.camList.options.length - 1);
+  while (elms.camList.firstChild) {
+    elms.camList.removeChild(elms.camList.firstChild);
   }
   
   for (let camera of cameras) {
@@ -114,9 +89,6 @@ function populateCameraList(cameras) {
   }
 }
 
-window.addEventListener("forceLogout", (event) => {
-  logoutActions
-});
 
 function handleWsMessage(event) {
   const message = JSON.parse(event.data);
@@ -130,29 +102,33 @@ function handleWsMessage(event) {
 }
 
 elms.camList.addEventListener('change', async (event) => {
+  window.dispatchEvent(new CustomEvent('device:switch', {
+      detail: { deviceId: appState.deviceID }
+    }));
   appState.deviceID = event.target.value;
   appState.activeFeed = true;
   appState.laserActive = false;
-  elms.typewriter.classList.add('removed');
   elms.camNameInput.value = event.target.options[event.target.selectedIndex].text;
-  wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
-  feedframe.setAttribute("src", `${location.protocol}//${window.location.hostname}/stream?deviceID=${appState.deviceID}`);
+  appState.feedSource = `${location.protocol}//${window.location.hostname}/stream?deviceID=${appState.deviceID}`;
 });
 
 
 elms.feedStop.addEventListener("click", () => {
-  feedframe.setAttribute("src", "");
-  document.getElementById('default-select').selected = true;
-  wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
-  appState.laserActive = false;
   appState.activeFeed = false;
+  document.getElementById('default-select').selected = true;
+  window.dispatchEvent(new CustomEvent('feed:stop', {
+    detail: { deviceId: appState.deviceID }
+  }));
+  appState.laserActive = false;
   appState.renamingDevice = false;
   appState.deviceID = null;
 });
 
 const stopLaserAction = () => {
   console.log('Laser stop button clicked on click event');
-  wsService.send({ type: "laser_cmd", role: "client", data: "off", device: appState.deviceID, hubID: 123});
+  window.dispatchEvent(new CustomEvent('laser:stop', {
+    detail: { deviceId: appState.deviceID }
+  }));
   appState.laserActive = false;
 }
 
@@ -161,9 +137,8 @@ elms.laserStop.addEventListener("touchend", stopLaserAction);
 
 elms.laserStart.addEventListener("click", async (e) => {
   try {
-    wsService.send({ type: "laser_cmd", role: "client", data: "on", device: appState.deviceID, hubID: 123});
-    const response = await waitForNextMessage(ws);
-    if (response.data == "fail") window.alert("laser already being controllerled");
+    const response = await sendAndAwait(wsService.instance);
+    if (response.data == "fail") window.alert("laser already being controlled");
     else if (response.data == "success") {
       appState.laserActive = true;
     }
@@ -174,33 +149,29 @@ elms.laserStart.addEventListener("click", async (e) => {
 });
 
 
-function waitForNextMessage(ws, timeout = 5000) {
+function sendAndAwait(wsObj, timeout = 5000) {
   return new Promise ((resolve, reject) => {
+    wsObj.send({ type: "laser_cmd", role: "client", data: "on", device: appState.deviceID, hubID: 123})
     const timer = setTimeout(() => {
-      ws.removeEventListener("message", handler)
+      wsObj.instance.removeEventListener("message", handler)
       reject(new Error("Timeout: No response from device"))
     }, timeout)
     const handler = (event) => {
       try {
-        const data = JSON.parse(event.data)
-        if (data.type == "confirmation") {
+        const msg = JSON.parse(event.data)
+        if (msg.type == "confirmation" && msg.data != "timeout") {
           clearTimeout(timer)
-          ws.removeEventListener("message", handler);
-          resolve(data);
+          wsObj.instance.removeEventListener("message", handler);
+          resolve(msg);
         }
       } catch (err) {
         console.error("Error parsing JSON:", err)
       }
     }
-    ws.addEventListener("message", handler)
+    wsObj.instance.addEventListener("message", handler)
   })
 }
 
-elms.feedFrame.onload = () => {
-  setTimeout(() => {
-    feedframe.classList.add('active');
-  }, 300); // small intentional delay for effect
-};
 
 elms.renameToggleBtn.addEventListener("click", () => {
   if (appState.renamingDevice == false) appState.renamingDevice = true;
@@ -212,8 +183,7 @@ elms.camNameSave.addEventListener("click", () => {
   elms.camNameInput.value.trim();
   if (!newName || !appState.deviceID) return;
   wsService.send({ type: "set_cam_name", device: appState.deviceID, name: newName });
-  const select = document.getElementById("cam-select");
-  const selected = select.options[select.selectedIndex];
+  const selected = elms.camList.options[elms.camList.selectedIndex];
   if (selected) selected.text = newName;
   appState.renamingDevice = false;
 });
@@ -228,6 +198,12 @@ servoController.onServoMove((x, y) => {
     device: appState.deviceID
   });
 });
+
+elms.feedFrame.onload = () => {
+  setTimeout(() => {
+    elms.feedframe.classList.add('active');
+  }, 300); // small intentional delay for effect
+};
 
 const El2typ = (obj) => {
   let str = obj.innerText;
@@ -248,5 +224,4 @@ const El2typ = (obj) => {
     }
   }, opt[0] *1000);
 };
-const El2typElements = document.querySelectorAll("[El2typ]");
 
