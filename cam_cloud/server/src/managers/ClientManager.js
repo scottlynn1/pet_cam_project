@@ -8,7 +8,7 @@ export class ClientManager {
     this.clientsockets[clientID] = ws;
     ws.on("message", (message) => {
       const msg = JSON.parse(message);
-      if (msg.type === "servo_cmd" || msg.type === "laser_cmd" || msg.type === "set_cam_name") {
+      if (msg.type === "servo_cmd" || msg.type === "laser_cmd" || msg.type == "tapo_cmd" || msg.type === "set_cam_name") {
 	      console.log(`Message recieved on client socket with clientID: ${clientID}\n  ${msg}`)
         const pyserver = this.hubmanager.hubs[hubID]?.socket
         if (pyserver) {

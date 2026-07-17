@@ -9,6 +9,16 @@ class NodeConnection:
         self.device_manager = device_manager
         self.stream_manager = stream_manager
         self.server_id = SERVER_ID
+        self.tapo_device = None
+
+    def add_tapo_device(self, device):
+        self.tapo_device = device
+        info = await self.tapo_device.get_device_info()
+        if info.device_on:
+            self.ws.send(json.dumps({"type": "tapo_data", "data": "on"}))
+        else:
+            self.ws.send(json.dumps({"type": "tapo_data", "data": "off"}))
+
 
     async def connect(self, uri):
         while True:
@@ -64,6 +74,16 @@ class NodeConnection:
                   device["last_sent_time"] = time.time()
                 else:
                     print("servo cmd failed, device being controlled by another user")
+
+            elif msg["type"] == "tapo_cmd":
+                if msg["data"] == "on":
+                    self.tapo.on()
+                    self.ws.send(json.dumps({"type": "tapo_data", "data": "on"}))
+
+                if msg["data"] == "off":
+                    self.tapo.off()
+                    self.ws.send(json.dumps({"type": "tapo_data", "data": "off"}))
+
 
 
             elif msg["type"] == "set_cam_name":

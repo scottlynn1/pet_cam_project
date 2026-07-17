@@ -47,7 +47,8 @@ const renameWrapper = document.getElementById('rename-wrapper');
 const camNameInput = document.getElementById('cam-name-input');
 const camNameSave = document.getElementById('cam-name-save');
 const toggleRenameBtn = document.getElementById('toggle-rename-btn');
-const typewriter = document.getElementById('typewriter')
+const typewriter = document.getElementById('typewriter');
+const tapoLight = document.getElementById('tapo-light');
 
 
 function showloginUI() {
@@ -129,10 +130,27 @@ function UpdateUI(event) {
     laserstartButton.classList.remove('hidden');
     laserwrapper.classList.remove('hidden');
   }
+  if (message.type == "tapo_data") {
+    if (message.data == "off") {
+      tapoLight.classList.remove("on");
+      tapoLight.classList.add("off");
+    } else if (message.data == "on") {
+      tapoLight.classList.remove("off");
+      tapoLight.classList.add("on");
+    }
+  }
   if (message.type == "error") {
     showloginUI();
   }
 }
+
+tapoLight.addEventListener("click", (e) => {
+  if (e.target.classList.contains("off")) {
+    ws.send(JSON.stringify({type: "tapo_cmd", data: "on"}))
+  } else if (e.target.classList.contains("on")) {
+    ws.send(JSON.stringify({type: "tapo_cmd", data: "off"}))
+  }
+})
 
 function openWs(token) {
   if (pingInterval) clearInterval(pingInterval);

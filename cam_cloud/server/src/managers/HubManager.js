@@ -27,6 +27,13 @@ export class HubManager {
           clientSocket.send(JSON.stringify(msg));
         }
       }
+      if (msg.type == "tapo_data") {
+        for (const client in this.clientmanager.clientsockets) {
+          if (clientSocket && clientSocket.readyState === WebSocket.OPEN) {
+            this.clientmanager.clientsockets[client].send(JSON.stringify(msg))
+          }
+        }
+      }
 
     })
     socket.on('close', () => {

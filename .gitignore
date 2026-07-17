@@ -5,3 +5,7 @@
 *.sh
 node_modules/
 *.db
+__py
+__pycache__/
+*.py[cod]
+*$py.class

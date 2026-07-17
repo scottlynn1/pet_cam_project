@@ -52,6 +52,14 @@ body {
   50% { border-color: transparent }
 }
 
+.tapo-light.off {
+  background-color: #1C0B4A;
+}
+
+.tapo-light.on {
+  background-color: #646cff;
+}
+
 
 a {
   font-weight: 500;
