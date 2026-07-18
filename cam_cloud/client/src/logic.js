@@ -389,6 +389,10 @@ function sendServoData(y, x) {
   const hasMovedEnough = Math.abs(x - lastSentX) > threshold || Math.abs(y - lastSentY) > threshold;
 
   if (now - lastSendTime > throttleMS && hasMovedEnough) {
+    lastSentX = x;
+    lastSentY = y;
+    lastSendTime = now;
+
     x = 90 - Math.round(x*90)
     y = Math.round(y*90)
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -399,9 +403,6 @@ function sendServoData(y, x) {
       device: deviceID
     }))
   }
-    lastSentX = x;
-    lastSentY = y;
-    lastSendTime = now;
   }
 }
 
