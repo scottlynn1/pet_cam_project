@@ -2,6 +2,7 @@
 .env.development
 .env
 .venv
+.vev/
 *.sh
 node_modules/
 *.db

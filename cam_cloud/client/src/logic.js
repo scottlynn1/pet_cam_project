@@ -131,6 +131,7 @@ function UpdateUI(event) {
     laserwrapper.classList.remove('hidden');
   }
   if (message.type == "tapo_data") {
+    console.log(message)
     if (message.data == "off") {
       tapoLight.classList.remove("on");
       tapoLight.classList.add("off");

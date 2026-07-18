@@ -10,14 +10,19 @@ class NodeConnection:
         self.stream_manager = stream_manager
         self.server_id = SERVER_ID
         self.tapo_device = None
+        self.client = None
 
-    def add_tapo_device(self, device):
+    async def add_tapo_device(self, device, client):
+        print('adding device')
         self.tapo_device = device
-        info = await self.tapo_device.get_device_info()
+        self.client = client
+        device = await asyncio.wait_for(self.client.p110(self.tapo_device), timeout=1.5)
+        info = await device.get_device_info()
+        print(info.device_on)
         if info.device_on:
-            self.ws.send(json.dumps({"type": "tapo_data", "data": "on"}))
+            await self.ws.send(json.dumps({"type": "tapo_data", "data": "on"}))
         else:
-            self.ws.send(json.dumps({"type": "tapo_data", "data": "off"}))
+            await self.ws.send(json.dumps({"type": "tapo_data", "data": "off"}))
 
 
     async def connect(self, uri):
@@ -55,6 +60,18 @@ class NodeConnection:
     async def _handle(self, message):
         msg = json.loads(message)
         print(f"message recieved from node server:\n  {msg}")
+
+        if msg["type"] == "tapo_cmd":
+            device = await asyncio.wait_for(self.client.p110(self.tapo_device), timeout=1.5)
+            if msg["data"] == "on":
+                await device.on()
+                await self.ws.send(json.dumps({"type": "tapo_data", "data": "on"}))
+
+            if msg["data"] == "off":
+                await device.off()
+                await self.ws.send(json.dumps({"type": "tapo_data", "data": "off"}))
+            return
+            
         device = self.device_manager.get(msg["device"])
         if device:
             if msg["type"] == "laser_cmd":
@@ -75,14 +92,6 @@ class NodeConnection:
                 else:
                     print("servo cmd failed, device being controlled by another user")
 
-            elif msg["type"] == "tapo_cmd":
-                if msg["data"] == "on":
-                    self.tapo.on()
-                    self.ws.send(json.dumps({"type": "tapo_data", "data": "on"}))
-
-                if msg["data"] == "off":
-                    self.tapo.off()
-                    self.ws.send(json.dumps({"type": "tapo_data", "data": "off"}))
 
 
 

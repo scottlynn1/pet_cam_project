@@ -96,7 +96,6 @@ async def check_ip(client: ApiClient, ip: str, found_devices: list):
         # client.p100() works as a generic check for most Tapo plugs/switches
         print(f"attempting to connect to {ip}")
         device = await asyncio.wait_for(client.p110(ip), timeout=1.5)
-        print(device)
         # If it connects, grab the device info
         info = await device.get_device_info()
         name = getattr(info, "alias", None) or getattr(info, "nickname", None) or "Unknown Tapo Device"
@@ -107,9 +106,10 @@ async def check_ip(client: ApiClient, ip: str, found_devices: list):
             "mac": info.mac,
             "is_on": info.device_on
         }
-        if device_data["name"] == "Light_1":
-            node_connection.add_tapo_device(device)
         print(device_data)
+        if device_data["name"] == "Light_1":
+            await device.off()
+            await node_connection.add_tapo_device(device_data["ip"], client)
         found_devices.append(device_data)
         print(f"✅ Found Tapo Device: {info.alias} ({info.model}) at {ip}")
         
@@ -140,11 +140,11 @@ async def scan_subnet(subnet_prefix: str):
     return found_devices
 
 async def main():
-    SUBNET = "192.168.1" 
-    await asyncio.gather(
-      start_server(),
-      node_connection.connect(NODE_URL)
-    )
+    SUBNET = "192.168.1"
+    connection_task = asyncio.create_task(node_connection.connect(NODE_URL))
+    server_task = asyncio.create_task(start_server())
+    
+    await asyncio.sleep(5)
     
     tapo_list = await scan_subnet(SUBNET)
     
@@ -153,7 +153,7 @@ async def main():
     for dev in tapo_list:
         print(f"- {dev['name']} [{dev['model']}] -> {dev['ip']} (Status: {'ON' if dev['is_on'] else 'OFF'})")
 
-
+    await asyncio.gather(connection_task, server_task)
 
 if __name__ == "__main__":
     asyncio.run(main())
